@@ -1,5 +1,7 @@
 # Development Rules
 
+For AntiD2ta/pi changes, push branches to fork and open PRs against AntiD2ta/pi:main; treat earendil-works/pi (origin) as upstream-only and never open implementation PRs there.
+
 ## Plane projects
 
 Plane projects that track work for **this repo**. Before any Plane write, pick the project whose
