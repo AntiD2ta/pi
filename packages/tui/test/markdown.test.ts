@@ -65,6 +65,123 @@ describe("Markdown component", () => {
 		});
 	});
 
+	describe("Code fence chrome", () => {
+		it("passes semantic metadata and width to opt-in fence chrome", () => {
+			const calls: Array<{ language?: string; path?: string; width: number }> = [];
+			const markdown = new Markdown(
+				"```typescript src/example.ts\nconst answer = 42;\n```",
+				0,
+				0,
+				defaultMarkdownTheme,
+				undefined,
+				{
+					codeFenceChrome: {
+						header: (context) => {
+							calls.push(context);
+							return [`╭─ ${context.language} ${context.path}`];
+						},
+						body: (lines) => lines.map((line) => `│ ${line}`),
+						closing: () => ["╰─"],
+					},
+				},
+			);
+
+			assert.deepStrictEqual(
+				markdown.render(40).map((line) => stripAnsi(line).trimEnd()),
+				["╭─ typescript src/example.ts", "│ const answer = 42;", "╰─"],
+			);
+			assert.deepStrictEqual(calls, [{ language: "typescript", path: "src/example.ts", width: 40 }]);
+		});
+
+		it("passes only the language label to syntax highlighting", () => {
+			const languages: Array<string | undefined> = [];
+			const theme: MarkdownTheme = {
+				...defaultMarkdownTheme,
+				highlightCode: (code, language) => {
+					languages.push(language);
+					return code.split("\n");
+				},
+			};
+			const markdown = new Markdown(
+				"```typescript src/example.ts\nconst answer = 42;\n```",
+				0,
+				0,
+				theme,
+				undefined,
+				{
+					codeFenceChrome: {
+						header: () => [],
+						body: (lines) => lines,
+						closing: () => [],
+					},
+				},
+			);
+
+			markdown.render(40);
+			assert.deepStrictEqual(languages, ["typescript"]);
+		});
+
+		it("falls back to native rendering when chrome throws", () => {
+			const markdown = new Markdown(
+				"```typescript\nconst answer = 42;\n```",
+				0,
+				0,
+				defaultMarkdownTheme,
+				undefined,
+				{
+					codeFenceChrome: {
+						header: () => [],
+						body: () => {
+							throw new Error("prototype failure");
+						},
+						closing: () => [],
+					},
+				},
+			);
+
+			assert.deepStrictEqual(
+				markdown.render(40).map((line) => stripAnsi(line).trimEnd()),
+				["```typescript", "  const answer = 42;", "```"],
+			);
+		});
+
+		it("keeps chrome stable while a closing fence streams", () => {
+			const chrome = {
+				header: () => ["header"],
+				body: (lines: string[]) => lines,
+				closing: () => ["closing"],
+			};
+			const partial = new Markdown("```ts\nconst x = 1;\n``", 0, 0, defaultMarkdownTheme, undefined, {
+				codeFenceChrome: chrome,
+			});
+			const complete = new Markdown("```ts\nconst x = 1;\n```", 0, 0, defaultMarkdownTheme, undefined, {
+				codeFenceChrome: chrome,
+			});
+
+			assert.deepStrictEqual(
+				partial.render(40).map((line) => stripAnsi(line).trimEnd()),
+				complete.render(40).map((line) => stripAnsi(line).trimEnd()),
+			);
+		});
+
+		it("treats a single filename as a path label", () => {
+			let context: { language?: string; path?: string } | undefined;
+			const markdown = new Markdown("```package.json\n{}\n```", 0, 0, defaultMarkdownTheme, undefined, {
+				codeFenceChrome: {
+					header: (value) => {
+						context = value;
+						return [];
+					},
+					body: (lines) => lines,
+					closing: () => [],
+				},
+			});
+
+			markdown.render(40);
+			assert.deepStrictEqual(context, { path: "package.json", width: 40 });
+		});
+	});
+
 	describe("Lists", () => {
 		it("should render simple nested list", () => {
 			const markdown = new Markdown(
