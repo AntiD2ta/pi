@@ -533,7 +533,12 @@ class ModelsImpl implements MutableModels {
 			if (!auth?.auth.apiKey) return undefined;
 			const current = await this.readCredential(providerId, signal);
 			if (current?.type !== "oauth" || current.access !== auth.auth.apiKey) return undefined;
-			return await raceWithAbortSignal(provider.fetchUsageReport({ accessToken: auth.auth.apiKey, signal }), signal);
+			const accountId =
+				typeof current.accountId === "string" && current.accountId.length > 0 ? current.accountId : undefined;
+			return await raceWithAbortSignal(
+				provider.fetchUsageReport({ accessToken: auth.auth.apiKey, accountId, signal }),
+				signal,
+			);
 		} catch {
 			return undefined;
 		}
