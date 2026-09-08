@@ -18,6 +18,7 @@ export interface UsageReport {
 /** Credential-derived request data supplied only by the AI runtime to a provider adapter. */
 export interface UsageReportRequest {
 	accessToken: string;
+	accountId?: string;
 	signal: AbortSignal;
 }
 
