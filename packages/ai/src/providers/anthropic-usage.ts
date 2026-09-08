@@ -11,6 +11,12 @@ type CacheEntry = {
 	report: UsageReport | undefined;
 };
 
+type PendingRequest = {
+	controller: AbortController;
+	callers: number;
+	request: Promise<UsageReport | undefined>;
+};
+
 type AnthropicUsageResponse = {
 	five_hour?: {
 		utilization?: unknown;
@@ -42,10 +48,9 @@ function parseFiveHourWindow(response: AnthropicUsageResponse, observedAt: numbe
 
 export function createAnthropicUsageReportFetcher(): UsageReportFetcher {
 	const cache = new Map<string, CacheEntry>();
-	const pending = new Map<string, Promise<UsageReport | undefined>>();
+	const pending = new Map<string, PendingRequest>();
 
-	const fetchReport = async (accessToken: string): Promise<UsageReport | undefined> => {
-		const observedAt = Date.now();
+	const fetchReport = async (accessToken: string, signal: AbortSignal): Promise<UsageReport | undefined> => {
 		try {
 			const response = await fetch(USAGE_URL, {
 				headers: {
@@ -54,10 +59,10 @@ export function createAnthropicUsageReportFetcher(): UsageReportFetcher {
 					"anthropic-beta": "oauth-2025-04-20",
 					"User-Agent": CLAUDE_CODE_USER_AGENT,
 				},
-				signal: AbortSignal.timeout(5_000),
+				signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]),
 			});
 			if (!response.ok) return undefined;
-			const fiveHour = parseFiveHourWindow((await response.json()) as AnthropicUsageResponse, observedAt);
+			const fiveHour = parseFiveHourWindow((await response.json()) as AnthropicUsageResponse, Date.now());
 			return fiveHour ? { windows: [fiveHour] } : undefined;
 		} catch {
 			return undefined;
@@ -67,18 +72,31 @@ export function createAnthropicUsageReportFetcher(): UsageReportFetcher {
 	return ({ accessToken, signal }) => {
 		if (signal.aborted) return Promise.resolve(undefined);
 		const cached = cache.get(accessToken);
-		if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.report);
+		if (
+			cached &&
+			cached.expiresAt > Date.now() &&
+			cached.report?.windows.every((window) => window.resetsAt > Date.now()) !== false
+		) {
+			return Promise.resolve(cached.report);
+		}
 		if (cached) cache.delete(accessToken);
 
-		let request = pending.get(accessToken);
-		if (!request) {
-			request = fetchReport(accessToken).then((report) => {
+		let pendingRequest = pending.get(accessToken);
+		if (!pendingRequest) {
+			const controller = new AbortController();
+			const request = fetchReport(accessToken, controller.signal).then((report) => {
 				cache.set(accessToken, { expiresAt: Date.now() + CACHE_DURATION_MS, report });
 				return report;
 			});
-			pending.set(accessToken, request);
+			pendingRequest = { controller, callers: 0, request };
+			pending.set(accessToken, pendingRequest);
 			void request.finally(() => pending.delete(accessToken));
 		}
-		return raceWithAbortSignal(request, signal).catch(() => undefined);
+		pendingRequest.callers++;
+		return raceWithAbortSignal(pendingRequest.request, signal)
+			.catch(() => undefined)
+			.finally(() => {
+				if (--pendingRequest.callers === 0) pendingRequest.controller.abort();
+			});
 	};
 }
