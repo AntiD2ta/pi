@@ -143,6 +143,21 @@ const LATEX_MARKDOWN_EXTENSIONS: readonly TokenizerExtension[] = [
 	},
 ];
 
+function parseCodeFenceContext(info: string | undefined, width: number): MarkdownCodeFenceContext {
+	const labels = info?.trim().split(/\s+/).filter(Boolean) ?? [];
+	const [first, ...rest] = labels;
+	if (!first) {
+		return { width };
+	}
+	if (rest.length > 0) {
+		return { language: first, path: rest.join(" "), width };
+	}
+	if (first.includes("/") || first.includes("\\") || first.includes(".")) {
+		return { path: first, width };
+	}
+	return { language: first, width };
+}
+
 function trimPartialClosingFences(tokens: readonly Token[]): void {
 	const token = tokens[tokens.length - 1];
 	if (token?.type === "list") {
@@ -217,6 +232,18 @@ export interface MarkdownTheme {
 	codeBlockIndent?: string;
 }
 
+export interface MarkdownCodeFenceContext {
+	language?: string;
+	path?: string;
+	width: number;
+}
+
+export interface MarkdownCodeFenceChrome {
+	header: (context: MarkdownCodeFenceContext) => string[];
+	body: (lines: string[], context: MarkdownCodeFenceContext) => string[];
+	closing: (context: MarkdownCodeFenceContext) => string[];
+}
+
 export interface MarkdownOptions {
 	/** Preserve source list markers instead of normalizing them. */
 	preserveOrderedListMarkers?: boolean;
@@ -224,6 +251,8 @@ export interface MarkdownOptions {
 	preserveBackslashEscapes?: boolean;
 	/** Transform source Markdown before parsing, with the exact width available for content. */
 	transform?: (markdown: string, availableWidth: number) => string;
+	/** Optional display-only presentation for fenced code blocks. */
+	codeFenceChrome?: MarkdownCodeFenceChrome;
 	/** Render supported LaTeX math expressions as Unicode text (default: true). */
 	renderLatex?: boolean;
 }
@@ -518,6 +547,23 @@ export class Markdown implements Component {
 			}
 
 			case "code": {
+				const chrome = this.options.codeFenceChrome;
+				if (chrome) {
+					try {
+						const context = parseCodeFenceContext(token.lang, width);
+						const codeLines = this.theme.highlightCode
+							? this.theme.highlightCode(token.text, context.language)
+							: token.text.split("\n").map((line: string) => this.theme.codeBlock(line));
+						lines.push(...chrome.header(context), ...chrome.body(codeLines, context), ...chrome.closing(context));
+						if (nextTokenType && nextTokenType !== "space") {
+							lines.push("");
+						}
+						break;
+					} catch {
+						// Render the native fence when custom chrome cannot render it.
+					}
+				}
+
 				const indent = this.theme.codeBlockIndent ?? "  ";
 				lines.push(this.theme.codeBlockBorder(`\`\`\`${token.lang || ""}`));
 				if (this.theme.highlightCode) {
@@ -526,15 +572,13 @@ export class Markdown implements Component {
 						lines.push(`${indent}${hlLine}`);
 					}
 				} else {
-					// Split code by newlines and style each line
-					const codeLines = token.text.split("\n");
-					for (const codeLine of codeLines) {
+					for (const codeLine of token.text.split("\n")) {
 						lines.push(`${indent}${this.theme.codeBlock(codeLine)}`);
 					}
 				}
 				lines.push(this.theme.codeBlockBorder("```"));
 				if (nextTokenType && nextTokenType !== "space") {
-					lines.push(""); // Add spacing after code blocks (unless space token follows)
+					lines.push("");
 				}
 				break;
 			}
