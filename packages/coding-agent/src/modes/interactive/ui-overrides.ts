@@ -1,10 +1,6 @@
-export type UIOwner = object;
+import type { UIOverrideResult, UIOwner } from "../../core/extensions/types.ts";
 
-export interface UIOverrideResult {
-	effectiveOwner: UIOwner | undefined;
-	previousOwner: UIOwner | undefined;
-	conflictedOwner: UIOwner | undefined;
-}
+export type { UIOverrideResult, UIOwner } from "../../core/extensions/types.ts";
 
 type Override<T> = {
 	owner: UIOwner;
@@ -16,6 +12,10 @@ export class OwnerOverrideSlot<T> {
 
 	get current(): Override<T> | undefined {
 		return this.#overrides.at(-1);
+	}
+
+	get result(): UIOverrideResult {
+		return { effectiveOwner: this.current?.owner, previousOwner: this.current?.owner, conflictedOwner: undefined };
 	}
 
 	set(owner: UIOwner, value: T): UIOverrideResult {

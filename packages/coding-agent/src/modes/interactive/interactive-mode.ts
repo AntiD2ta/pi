@@ -495,6 +495,11 @@ export class InteractiveMode {
 	private readonly editorOverrides = new OwnerOverrideSlot<EditorFactory>();
 	private readonly themeOverrides = new OwnerOverrideSlot<string | Theme>();
 	private themeOverrideBase: string | undefined;
+	private footerBaseFactory:
+		| ((tui: TUI, theme: Theme, footerData: ReadonlyFooterDataProvider) => Component & { dispose?(): void })
+		| undefined;
+	private editorBaseFactory: EditorFactory | undefined;
+	private uiOverrideGeneration = 0;
 
 	// Header container that holds the built-in or custom header
 	private headerContainer: Container;
@@ -2283,7 +2288,9 @@ export class InteractiveMode {
 		}
 		this.ui.hideOverlay();
 		this.clearExtensionTerminalInputListeners();
+		this.uiOverrideGeneration++;
 		this.footerOverrides.clear();
+		this.footerBaseFactory = undefined;
 		this.setExtensionFooter(undefined);
 		this.setExtensionHeader(undefined);
 		this.clearExtensionHeaderWidgets();
@@ -2292,6 +2299,7 @@ export class InteractiveMode {
 		this.footer.invalidate();
 		this.autocompleteProviderWrappers = [];
 		this.editorOverrides.clear();
+		this.editorBaseFactory = undefined;
 		this.setCustomEditorComponent(undefined);
 		this.restoreThemeOverrideBase();
 		this.setupAutocompleteProvider();
@@ -2371,6 +2379,17 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
+	private setExtensionFooterBase(
+		factory:
+			| ((tui: TUI, theme: Theme, footerData: ReadonlyFooterDataProvider) => Component & { dispose?(): void })
+			| undefined,
+	): void {
+		this.footerBaseFactory = factory;
+		if (this.footerOverrides.current === undefined) {
+			this.setExtensionFooter(factory);
+		}
+	}
+
 	private setExtensionFooterOverride(
 		owner: object,
 		factory:
@@ -2381,7 +2400,7 @@ export class InteractiveMode {
 		const result =
 			factory === undefined ? this.footerOverrides.release(owner) : this.footerOverrides.set(owner, factory);
 		if (factory !== undefined || wasActive) {
-			this.setExtensionFooter(this.footerOverrides.current?.value);
+			this.setExtensionFooter(this.footerOverrides.current?.value ?? this.footerBaseFactory);
 		}
 		return result;
 	}
@@ -2519,6 +2538,7 @@ export class InteractiveMode {
 	}
 
 	private createExtensionUIContext(): ExtensionUIContext {
+		const overrideGeneration = this.uiOverrideGeneration;
 		return {
 			select: (title, options, opts) => this.showExtensionSelector(title, options, opts),
 			confirm: (title, message, opts) => this.showExtensionConfirm(title, message, opts),
@@ -2536,8 +2556,11 @@ export class InteractiveMode {
 			setWorkingIndicator: (options) => this.setWorkingIndicator(options),
 			setHiddenThinkingLabel: (label) => this.setHiddenThinkingLabel(label),
 			setWidget: (key, content, options) => this.setExtensionWidget(key, content, options),
-			setFooter: (factory) => this.setExtensionFooter(factory),
-			setFooterOverride: (owner, factory) => this.setExtensionFooterOverride(owner, factory),
+			setFooter: (factory) => this.setExtensionFooterBase(factory),
+			setFooterOverride: (owner, factory) =>
+				overrideGeneration === this.uiOverrideGeneration
+					? this.setExtensionFooterOverride(owner, factory)
+					: this.footerOverrides.result,
 			setHeader: (factory) => this.setExtensionHeader(factory),
 			setHeaderWidget: (key, factory) => this.setExtensionHeaderWidget(key, factory),
 			setTitle: (title) => this.ui.terminal.setTitle(title),
@@ -2550,8 +2573,11 @@ export class InteractiveMode {
 				this.autocompleteProviderWrappers.push(factory);
 				this.setupAutocompleteProvider();
 			},
-			setEditorComponent: (factory) => this.setCustomEditorComponent(factory),
-			setEditorComponentOverride: (owner, factory) => this.setCustomEditorComponentOverride(owner, factory),
+			setEditorComponent: (factory) => this.setCustomEditorComponentBase(factory),
+			setEditorComponentOverride: (owner, factory) =>
+				overrideGeneration === this.uiOverrideGeneration
+					? this.setCustomEditorComponentOverride(owner, factory)
+					: this.editorOverrides.result,
 			getEditorComponent: () => this.editorComponentFactory,
 			get theme() {
 				return theme;
@@ -2559,7 +2585,10 @@ export class InteractiveMode {
 			getAllThemes: () => getAvailableThemesWithPaths(),
 			getTheme: (name) => getThemeByName(name),
 			setTheme: (themeOrName) => this.setUserTheme(themeOrName),
-			setThemeOverride: (owner, themeOrName) => this.setThemeOverride(owner, themeOrName),
+			setThemeOverride: (owner, themeOrName) =>
+				overrideGeneration === this.uiOverrideGeneration
+					? this.setThemeOverride(owner, themeOrName)
+					: this.themeOverrides.result,
 			getToolsExpanded: () => this.toolOutputExpanded,
 			setToolsExpanded: (expanded) => this.setToolsExpanded(expanded),
 		};
@@ -2825,12 +2854,19 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
+	private setCustomEditorComponentBase(factory: EditorFactory | undefined): void {
+		this.editorBaseFactory = factory;
+		if (this.editorOverrides.current === undefined) {
+			this.setCustomEditorComponent(factory);
+		}
+	}
+
 	private setCustomEditorComponentOverride(owner: object, factory: EditorFactory | undefined) {
 		const wasActive = this.editorOverrides.current?.owner === owner;
 		const result =
 			factory === undefined ? this.editorOverrides.release(owner) : this.editorOverrides.set(owner, factory);
 		if (factory !== undefined || wasActive) {
-			this.setCustomEditorComponent(this.editorOverrides.current?.value);
+			this.setCustomEditorComponent(this.editorOverrides.current?.value ?? this.editorBaseFactory);
 		}
 		return result;
 	}
@@ -2851,7 +2887,7 @@ export class InteractiveMode {
 	private restoreThemeOverrideBase(): void {
 		this.themeOverrides.clear();
 		if (this.themeOverrideBase !== undefined) {
-			this.themeController.setThemeName(this.themeOverrideBase);
+			void this.themeController.setThemeSetting(this.themeOverrideBase);
 			this.themeOverrideBase = undefined;
 		}
 	}
@@ -2870,7 +2906,7 @@ export class InteractiveMode {
 			} else if (effectiveTheme !== undefined) {
 				this.themeController.setThemeName(effectiveTheme);
 			} else if (this.themeOverrideBase !== undefined) {
-				this.themeController.setThemeName(this.themeOverrideBase);
+				void this.themeController.setThemeSetting(this.themeOverrideBase);
 				this.themeOverrideBase = undefined;
 			} else {
 				void this.themeController.applyFromSettings();
@@ -6746,6 +6782,10 @@ export class InteractiveMode {
 		this.clearStatusIndicator();
 		this.themeController.disableAutoSync();
 		this.clearExtensionTerminalInputListeners();
+		this.customFooter?.dispose?.();
+		if (this.editor !== this.defaultEditor) {
+			(this.editor as EditorComponent & { dispose?(): void }).dispose?.();
+		}
 		this.footer.dispose();
 		this.footerDataProvider.dispose();
 		if (this.unsubscribe) {
