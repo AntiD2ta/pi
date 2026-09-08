@@ -60,6 +60,7 @@ import type {
 	SessionShutdownEvent,
 	ToolCallEvent,
 	ToolCallEventResult,
+	ToolRendererProfile,
 	ToolResultEvent,
 	ToolResultEventResult,
 	UIPromptKind,
@@ -656,6 +657,14 @@ export class ExtensionRunner {
 			}
 		}
 		return undefined;
+	}
+
+	getActiveToolRendererProfile(): ToolRendererProfile | undefined {
+		return this.runtime.getActiveToolRendererProfile();
+	}
+
+	onToolRendererProfileChange(listener: () => void): () => void {
+		return this.runtime.onToolRendererProfileChange(listener);
 	}
 
 	private resolveRegisteredCommands(): ResolvedCommand[] {
