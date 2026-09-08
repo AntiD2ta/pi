@@ -1,4 +1,3 @@
-import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import {
 	Box,
 	type Component,
@@ -11,26 +10,9 @@ import {
 	type TUI,
 	type TuiMouseEvent,
 } from "@earendil-works/pi-tui";
-import type { ToolDefinition, ToolRenderContext, ToolRenderResultOptions } from "../../../core/extensions/types.ts";
-import type { Theme } from "../theme/theme.ts";
+import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../core/extensions/types.ts";
 
-/**
- * What this component needs from a tool: how to draw it. It neither executes tools nor reads their
- * parameter schemas, so a definition and a bare renderer pair are equally acceptable.
- *
- * The renderer parameters are `any` on purpose: a `ToolDefinition` types them from its schema, and
- * narrowing them here would make those definitions unassignable.
- */
-export interface ToolRenderers {
-	renderShell?: "default" | "self";
-	renderCall?: (args: any, theme: Theme, context: ToolRenderContext<any, any>) => Component;
-	renderResult?: (
-		result: AgentToolResult<any>,
-		options: ToolRenderResultOptions,
-		theme: Theme,
-		context: ToolRenderContext<any, any>,
-	) => Component;
-}
+export type { ToolRenderers } from "../../../core/extensions/types.ts";
 
 import { getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
 import { convertToPng } from "../../../utils/image-convert.ts";
@@ -48,6 +30,7 @@ export class ToolExecutionComponent extends Container {
 	private contentBox: Box;
 	private contentText: Text;
 	private contentTextRegion: MouseRegion;
+	private renderRoot: Container;
 	private selfRenderContainer: Container;
 	private selfRenderHeight = 0;
 	private callRendererComponent?: Component;
@@ -102,13 +85,9 @@ export class ToolExecutionComponent extends Container {
 		this.contentBox = new Box(1, 1, (text: string) => theme.bg("toolPendingBg", text));
 		this.contentText = new Text("", 1, 1, (text: string) => theme.bg("toolPendingBg", text));
 		this.contentTextRegion = this.createResultRegion(this.contentText);
+		this.renderRoot = new Container();
 		this.selfRenderContainer = new Container();
-
-		if (this.hasRendererDefinition()) {
-			this.addChild(this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox);
-		} else {
-			this.addChild(this.contentTextRegion);
-		}
+		this.addChild(this.renderRoot);
 
 		this.updateDisplay();
 	}
@@ -175,6 +154,17 @@ export class ToolExecutionComponent extends Container {
 			this.setExpanded(!this.expanded);
 			return { handled: true };
 		});
+	}
+
+	getToolName(): string {
+		return this.toolName;
+	}
+
+	/** Replace the display definition without changing this row's execution or result state. */
+	setToolDefinition(toolDefinition: ToolRenderers | ToolDefinition<any, any, any> | undefined): void {
+		this.toolDefinition = toolDefinition;
+		this.updateDisplay();
+		this.ui.requestRender();
 	}
 
 	updateArgs(args: any): void {
@@ -303,8 +293,10 @@ export class ToolExecutionComponent extends Container {
 
 		let hasContent = false;
 		this.hideComponent = false;
+		this.renderRoot.clear();
 		if (this.hasRendererDefinition()) {
 			const renderContainer = this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox;
+			this.renderRoot.addChild(renderContainer);
 			if (renderContainer instanceof Box) {
 				renderContainer.setBgFn(bgFn);
 			}
@@ -359,6 +351,7 @@ export class ToolExecutionComponent extends Container {
 		} else {
 			this.contentText.setCustomBgFn(bgFn);
 			this.contentText.setText(this.formatToolExecution());
+			this.renderRoot.addChild(this.contentTextRegion);
 			hasContent = true;
 		}
 

@@ -6,7 +6,7 @@
  * graph out of a process that only renders.
  */
 
-import type { ToolDefinition } from "../../extensions/types.ts";
+import type { ToolRendererProfile, ToolRenderers } from "../../extensions/types.ts";
 import type { ToolName } from "../index.ts";
 import { createShellRenderers } from "./bash.ts";
 import { editRenderers } from "./edit.ts";
@@ -16,7 +16,7 @@ import { lsRenderers } from "./ls.ts";
 import { readRenderers } from "./read.ts";
 import { writeRenderers } from "./write.ts";
 
-export type ToolRenderers = Pick<ToolDefinition<any, any>, "renderCall" | "renderResult">;
+export type { ToolRenderers } from "../../extensions/types.ts";
 
 export {
 	createShellRenderers,
@@ -59,5 +59,25 @@ export function withBuiltInRenderers<TDefinition extends ToolRenderers>(
 		...definition,
 		renderCall: definition.renderCall ?? builtIn.renderCall,
 		renderResult: definition.renderResult ?? builtIn.renderResult,
+	};
+}
+
+/**
+ * Resolve display slots without changing the executable tool definition. Explicit self-rendered
+ * tools own their shell completely; otherwise each slot falls through independently.
+ */
+export function resolveToolRenderers(
+	toolName: string,
+	explicit: ToolRenderers | undefined,
+	profile: ToolRendererProfile | undefined,
+): ToolRenderers | undefined {
+	if (explicit?.renderShell === "self") return explicit;
+	const profileRenderers = profile?.tools[toolName];
+	const builtIn = createAllToolRenderers()[toolName as ToolName];
+	if (!explicit && !profileRenderers && !builtIn) return undefined;
+	return {
+		renderShell: explicit?.renderShell ?? profileRenderers?.renderShell,
+		renderCall: explicit?.renderCall ?? profileRenderers?.renderCall ?? builtIn?.renderCall,
+		renderResult: explicit?.renderResult ?? profileRenderers?.renderResult ?? builtIn?.renderResult,
 	};
 }

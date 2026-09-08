@@ -8,7 +8,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
-import { createExtensionRuntime, discoverAndLoadExtensions, loadExtensions } from "../src/core/extensions/loader.ts";
+import { createEventBus } from "../src/core/event-bus.ts";
+import {
+	createExtensionRuntime,
+	discoverAndLoadExtensions,
+	loadExtensionFromFactory,
+	loadExtensions,
+} from "../src/core/extensions/loader.ts";
 import { ExtensionRunner, emitProjectTrustEvent } from "../src/core/extensions/runner.ts";
 import type {
 	ExtensionActions,
@@ -589,6 +595,45 @@ describe("ExtensionRunner", () => {
 			expect(errors.length).toBe(1);
 			expect(errors[0].error).toContain("Handler error!");
 			expect(errors[0].event).toBe("context");
+		});
+	});
+
+	describe("tool renderer profiles", () => {
+		it("restores the previous profile and ignores a stale release", async () => {
+			const runtime = createExtensionRuntime();
+			let releaseFirst: (() => void) | undefined;
+			let releaseSecond: (() => void) | undefined;
+			const first = await loadExtensionFromFactory(
+				(pi) => {
+					releaseFirst = pi.activateToolRendererProfile({ tools: { read: {} } });
+				},
+				tempDir,
+				createEventBus(),
+				runtime,
+				"<inline:first>",
+			);
+			const second = await loadExtensionFromFactory(
+				(pi) => {
+					releaseSecond = pi.activateToolRendererProfile({ tools: { bash: {} } });
+				},
+				tempDir,
+				createEventBus(),
+				runtime,
+				"<inline:second>",
+			);
+			const runner = new ExtensionRunner([first, second], runtime, tempDir, sessionManager, modelRegistry);
+
+			expect(runner.getActiveToolRendererProfile()?.tools).toEqual({ bash: {} });
+			releaseSecond?.();
+			expect(runner.getActiveToolRendererProfile()?.tools).toEqual({ read: {} });
+			const releaseThird = runtime.activateToolRendererProfile({ tools: { bash: {} } });
+			releaseFirst?.();
+			expect(runner.getActiveToolRendererProfile()?.tools).toEqual({ bash: {} });
+			releaseThird();
+			expect(runner.getActiveToolRendererProfile()).toBeUndefined();
+			runtime.activateToolRendererProfile({ tools: { read: {} } });
+			runtime.invalidate();
+			expect(runner.getActiveToolRendererProfile()).toBeUndefined();
 		});
 	});
 

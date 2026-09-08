@@ -3,10 +3,10 @@ import { Text, type TUI, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { beforeAll, describe, expect, test } from "vitest";
 import { getReadmePath } from "../src/config.ts";
-import type { ToolDefinition } from "../src/core/extensions/types.ts";
+import type { ToolDefinition, ToolRendererProfile, ToolRenderers } from "../src/core/extensions/types.ts";
 import { type BashOperations, createBashToolDefinition } from "../src/core/tools/bash.ts";
 import { createReadTool, createReadToolDefinition } from "../src/core/tools/read.ts";
-import { withBuiltInRenderers } from "../src/core/tools/renderers/index.ts";
+import { resolveToolRenderers, withBuiltInRenderers } from "../src/core/tools/renderers/index.ts";
 import { createWriteToolDefinition } from "../src/core/tools/write.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
@@ -34,6 +34,45 @@ function createFakeTui(): TUI {
 describe("ToolExecutionComponent parity", () => {
 	beforeAll(() => {
 		initTheme("dark");
+	});
+
+	test("resolves display slots from explicit renderers, profile, then Pi", () => {
+		const profile: ToolRendererProfile = {
+			tools: {
+				read: {
+					renderCall: () => new Text("profile call", 0, 0),
+					renderResult: () => new Text("profile result", 0, 0),
+				},
+			},
+		};
+		const explicit: ToolRenderers = {
+			renderShell: "default",
+			renderCall: () => new Text("explicit call", 0, 0),
+		};
+		const renderers = resolveToolRenderers("read", explicit, profile);
+		expect(
+			stripAnsi(
+				renderers
+					?.renderCall?.({}, theme, {} as never)
+					.render(120)
+					.join("\n") ?? "",
+			),
+		).toContain("explicit call");
+		expect(
+			stripAnsi(
+				renderers
+					?.renderResult?.(
+						{ content: [], details: undefined },
+						{ expanded: false, isPartial: false },
+						theme,
+						{} as never,
+					)
+					.render(120)
+					.join("\n") ?? "",
+			),
+		).toContain("profile result");
+		expect(renderers?.renderShell).toBe("default");
+		expect(resolveToolRenderers("read", { renderShell: "self" }, profile)).toEqual({ renderShell: "self" });
 	});
 
 	test("stacks custom call and result renderers like the old implementation", () => {

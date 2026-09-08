@@ -505,6 +505,17 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	) => Component;
 }
 
+/** Display-only renderer slots for a tool. */
+export type ToolRenderers = Pick<ToolDefinition<any, any, any>, "renderShell" | "renderCall" | "renderResult">;
+
+/**
+ * An opt-in display-only profile for built-in and conventionally rendered tools.
+ * A profile never registers executable tools or changes model-visible tool definitions.
+ */
+export interface ToolRendererProfile {
+	tools: Record<string, ToolRenderers | undefined>;
+}
+
 type AnyToolDefinition = ToolDefinition<any, any, any>;
 
 /**
@@ -1315,6 +1326,12 @@ export interface ExtensionAPI {
 		tool: ToolDefinition<TParams, TDetails, TState>,
 	): void;
 
+	/**
+	 * Activate a display-only tool renderer profile. The returned release function restores the
+	 * profile active before this activation, unless a newer activation still owns that slot.
+	 */
+	activateToolRendererProfile(profile: ToolRendererProfile): () => void;
+
 	// =========================================================================
 	// Command, Shortcut, Flag Registration
 	// =========================================================================
@@ -1674,6 +1691,9 @@ export type SetLabelHandler = (entryId: string, label: string | undefined) => vo
  */
 export interface ExtensionRuntimeState {
 	flagValues: Map<string, boolean | string>;
+	activateToolRendererProfile: (profile: ToolRendererProfile) => () => void;
+	getActiveToolRendererProfile: () => ToolRendererProfile | undefined;
+	onToolRendererProfileChange: (listener: () => void) => () => void;
 	/** Legacy provider-config registrations queued during extension loading, processed when runner binds. */
 	pendingProviderRegistrations: Array<{ name: string; config: ProviderConfig; extensionPath: string }>;
 	/** Native pi-ai provider registrations queued during extension loading, processed when runner binds. */

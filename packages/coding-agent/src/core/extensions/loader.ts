@@ -44,6 +44,7 @@ import type {
 	ProviderConfig,
 	RegisteredCommand,
 	ToolDefinition,
+	ToolRendererProfile,
 } from "./types.ts";
 
 /** Modules available to extensions via virtualModules (for compiled binaries) */
@@ -180,6 +181,11 @@ export function createExtensionRuntime(): ExtensionRuntime {
 	};
 	const state: { staleMessage?: string } = {};
 	const eventBusUnsubscribers = new Set<() => void>();
+	const toolRendererProfileActivations: Array<{ profile: ToolRendererProfile; token: object }> = [];
+	const toolRendererProfileListeners = new Set<() => void>();
+	const notifyToolRendererProfileListeners = () => {
+		for (const listener of toolRendererProfileListeners) listener();
+	};
 	const assertActive = () => {
 		if (state.staleMessage) {
 			throw new Error(state.staleMessage);
@@ -203,6 +209,23 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		getThinkingLevel: notInitialized,
 		setThinkingLevel: notInitialized,
 		flagValues: new Map(),
+		activateToolRendererProfile: (profile) => {
+			const token = {};
+			toolRendererProfileActivations.push({ profile, token });
+			notifyToolRendererProfileListeners();
+			return () => {
+				const index = toolRendererProfileActivations.findIndex((activation) => activation.token === token);
+				if (index === -1) return;
+				const wasActive = index === toolRendererProfileActivations.length - 1;
+				toolRendererProfileActivations.splice(index, 1);
+				if (wasActive) notifyToolRendererProfileListeners();
+			};
+		},
+		getActiveToolRendererProfile: () => toolRendererProfileActivations.at(-1)?.profile,
+		onToolRendererProfileChange: (listener) => {
+			toolRendererProfileListeners.add(listener);
+			return () => toolRendererProfileListeners.delete(listener);
+		},
 		pendingProviderRegistrations: [],
 		pendingNativeProviderRegistrations: [],
 		assertActive,
@@ -213,6 +236,10 @@ export function createExtensionRuntime(): ExtensionRuntime {
 				"This extension ctx is stale after session replacement or reload. Do not use a captured pi or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().";
 			for (const unsubscribe of eventBusUnsubscribers) unsubscribe();
 			eventBusUnsubscribers.clear();
+			if (toolRendererProfileActivations.length > 0) {
+				toolRendererProfileActivations.length = 0;
+				notifyToolRendererProfileListeners();
+			}
 		},
 		trackEventBusSubscription: (unsubscribe) => {
 			let active = true;
@@ -291,6 +318,19 @@ function createExtensionAPI(
 				sourceInfo: extension.sourceInfo,
 			});
 			runtime.refreshTools();
+		},
+
+		activateToolRendererProfile(profile: ToolRendererProfile): () => void {
+			assertActive();
+			let released = false;
+			let release: (() => void) | undefined;
+			applyRuntimeChange(() => {
+				if (!released) release = runtime.activateToolRendererProfile(profile);
+			});
+			return () => {
+				released = true;
+				release?.();
+			};
 		},
 
 		registerCommand(name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">): void {

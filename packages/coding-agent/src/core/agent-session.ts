@@ -961,6 +961,10 @@ export class AgentSession {
 		return this._toolDefinitions.get(name)?.definition;
 	}
 
+	getToolDefinitionSource(name: string): SourceInfo | undefined {
+		return this._toolDefinitions.get(name)?.sourceInfo;
+	}
+
 	/**
 	 * Set active tools by name.
 	 * Only tools in the registry can be enabled. Unknown tool names are ignored.

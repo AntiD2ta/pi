@@ -97,7 +97,7 @@ import type { FullscreenExitOutput, TuiMode } from "../../core/settings-manager.
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
-import { withBuiltInRenderers } from "../../core/tools/renderers/index.ts";
+import { resolveToolRenderers } from "../../core/tools/renderers/index.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../core/trust-manager.ts";
 import { getUsageCostBreakdown } from "../../core/usage-totals.ts";
@@ -431,6 +431,7 @@ export class InteractiveMode {
 
 	// Tool execution tracking: toolCallId -> component
 	private pendingTools = new Map<string, ToolExecutionComponent>();
+	private unsubscribeToolRendererProfile?: () => void;
 
 	// Tool output expansion state
 	private toolOutputExpanded = false;
@@ -2011,6 +2012,12 @@ export class InteractiveMode {
 			this.subscribeToAgent();
 		}
 
+		this.unsubscribeToolRendererProfile?.();
+		this.unsubscribeToolRendererProfile = this.session.extensionRunner.onToolRendererProfileChange(() => {
+			this.refreshToolRendererProfiles();
+		});
+		this.refreshToolRendererProfiles();
+
 		await this.updateAvailableProviderCount();
 		this.updateEditorBorderColor();
 		this.updateTerminalTitle();
@@ -2035,15 +2042,24 @@ export class InteractiveMode {
 		this.renderInitialMessages();
 	}
 
-	/**
-	 * Get a registered tool definition by name (for custom rendering).
-	 */
-	/**
-	 * Extension-registered definition, falling back to the built-in one. The renderer components take
-	 * whatever this returns, so they never reach into the tool registry themselves.
-	 */
+	/** Resolve explicit extension/MCP slots, the active profile, then Pi's built-in renderer. */
 	private getRegisteredToolDefinition(toolName: string) {
-		return withBuiltInRenderers(toolName, this.session.getToolDefinition(toolName));
+		const definition = this.session.getToolDefinition(toolName);
+		const explicitDefinition =
+			this.session.getToolDefinitionSource(toolName)?.source === "builtin" ? undefined : definition;
+		return resolveToolRenderers(
+			toolName,
+			explicitDefinition,
+			this.session.extensionRunner.getActiveToolRendererProfile(),
+		);
+	}
+
+	private refreshToolRendererProfiles(): void {
+		for (const component of this.chatContainer.children) {
+			if (component instanceof ToolExecutionComponent) {
+				component.setToolDefinition(this.getRegisteredToolDefinition(component.getToolName()));
+			}
+		}
 	}
 
 	private getMarkdownTransformers(): MarkdownTransformer[] {
@@ -6673,6 +6689,8 @@ export class InteractiveMode {
 		if (this.unsubscribe) {
 			this.unsubscribe();
 		}
+		this.unsubscribeToolRendererProfile?.();
+		this.unsubscribeToolRendererProfile = undefined;
 		if (this.isInitialized) {
 			this.stopInteractiveTui(fullscreenExitOutput);
 			this.isInitialized = false;
