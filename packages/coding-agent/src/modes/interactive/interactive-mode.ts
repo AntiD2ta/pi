@@ -16,6 +16,7 @@ import type {
 	EditorComponent,
 	Keybinding,
 	KeyId,
+	MarkdownCodeFenceChrome,
 	MarkdownTheme,
 	OverlayHandle,
 	OverlayOptions,
@@ -495,6 +496,7 @@ export class InteractiveMode {
 	>();
 	private readonly editorOverrides = new OwnerOverrideSlot<EditorFactory>();
 	private readonly themeOverrides = new OwnerOverrideSlot<string | Theme>();
+	private readonly codeFenceChromeOverrides = new OwnerOverrideSlot<MarkdownCodeFenceChrome>();
 	private themeOverrideBase: string | undefined;
 	private footerBaseFactory:
 		| ((tui: TUI, theme: Theme, footerData: ReadonlyFooterDataProvider) => Component & { dispose?(): void })
@@ -2315,6 +2317,7 @@ export class InteractiveMode {
 		this.footer.invalidate();
 		this.autocompleteProviderWrappers = [];
 		this.editorOverrides.clear();
+		this.codeFenceChromeOverrides.clear();
 		this.editorBaseFactory = undefined;
 		this.setCustomEditorComponent(undefined);
 		this.restoreThemeOverrideBase();
@@ -2572,6 +2575,10 @@ export class InteractiveMode {
 			setWorkingIndicator: (options) => this.setWorkingIndicator(options),
 			setHiddenThinkingLabel: (label) => this.setHiddenThinkingLabel(label),
 			setWidget: (key, content, options) => this.setExtensionWidget(key, content, options),
+			setMarkdownCodeFenceChromeOverride: (owner, chrome) =>
+				overrideGeneration === this.uiOverrideGeneration
+					? this.setMarkdownCodeFenceChromeOverride(owner, chrome)
+					: this.codeFenceChromeOverrides.result,
 			setFooter: (factory) => this.setExtensionFooterBase(factory),
 			setFooterOverride: (owner, factory) =>
 				overrideGeneration === this.uiOverrideGeneration
@@ -2868,6 +2875,23 @@ export class InteractiveMode {
 		}
 		this.ui.setFocus(this.editor as Component);
 		this.ui.requestRender();
+	}
+
+	private setMarkdownCodeFenceChromeOverride(owner: object, chrome: MarkdownCodeFenceChrome | undefined) {
+		const wasActive = this.codeFenceChromeOverrides.current?.owner === owner;
+		const result =
+			chrome === undefined
+				? this.codeFenceChromeOverrides.release(owner)
+				: this.codeFenceChromeOverrides.set(owner, chrome);
+		if (chrome !== undefined || wasActive) {
+			this.chatContainer.invalidate();
+			this.ui.requestRender();
+		}
+		return result;
+	}
+
+	private getCodeFenceChrome(): MarkdownCodeFenceChrome | undefined {
+		return this.codeFenceChromeOverrides.current?.value;
 	}
 
 	private setCustomEditorComponentBase(factory: EditorFactory | undefined): void {
@@ -3436,6 +3460,7 @@ export class InteractiveMode {
 						this.hiddenThinkingLabel,
 						this.outputPad,
 						this.getMarkdownTransformers(),
+						() => this.getCodeFenceChrome(),
 					);
 					this.streamingMessage = event.message;
 					this.chatContainer.addChild(this.streamingComponent);
@@ -3846,6 +3871,7 @@ export class InteractiveMode {
 								this.getMarkdownThemeWithSettings(),
 								this.outputPad,
 								this.getMarkdownTransformers(),
+								() => this.getCodeFenceChrome(),
 							);
 							this.chatContainer.addChild(userComponent);
 						}
@@ -3855,6 +3881,7 @@ export class InteractiveMode {
 							this.getMarkdownThemeWithSettings(),
 							this.outputPad,
 							this.getMarkdownTransformers(),
+							() => this.getCodeFenceChrome(),
 						);
 						this.chatContainer.addChild(userComponent);
 					}
@@ -3869,6 +3896,7 @@ export class InteractiveMode {
 					this.hiddenThinkingLabel,
 					this.outputPad,
 					this.getMarkdownTransformers(),
+					() => this.getCodeFenceChrome(),
 				);
 				this.chatContainer.addChild(assistantComponent);
 				break;

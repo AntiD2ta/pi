@@ -40,6 +40,7 @@ import type {
 	EditorComponent,
 	EditorTheme,
 	KeyId,
+	MarkdownCodeFenceChrome,
 	OverlayHandle,
 	OverlayOptions,
 	TUI,
@@ -200,6 +201,9 @@ export interface ExtensionUIContext {
 			| ((tui: TUI, theme: Theme, footerData: ReadonlyFooterDataProvider) => Component & { dispose?(): void })
 			| undefined,
 	): void;
+
+	/** Claim or release fenced-code chrome for native interactive messages. Releasing a stale owner changes nothing. */
+	setMarkdownCodeFenceChromeOverride(owner: UIOwner, chrome: MarkdownCodeFenceChrome | undefined): UIOverrideResult;
 
 	/** Claim or release a temporary custom footer. Releasing a stale owner changes nothing. */
 	setFooterOverride(
