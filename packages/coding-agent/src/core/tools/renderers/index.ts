@@ -64,8 +64,7 @@ export function withBuiltInRenderers<TDefinition extends ToolRenderers>(
 
 /** Resolve Pi's native renderer slots without changing the executable tool definition. */
 export function resolveToolRenderers(toolName: string, explicit: ToolRenderers | undefined): ToolRenderers | undefined {
-	if (explicit) return explicit;
-	return createAllToolRenderers()[toolName as ToolName];
+	return withBuiltInRenderers(toolName, explicit);
 }
 
 /** Resolve a display-only frame for built-in tool rows; explicit renderers keep full ownership. */
@@ -74,6 +73,7 @@ export function resolveToolRendererProfile(
 	explicit: ToolRenderers | undefined,
 	profile: ToolRendererProfile | undefined,
 ): ToolRendererProfile | undefined {
-	if (explicit || !createAllToolRenderers()[toolName as ToolName]) return undefined;
+	const hasExplicitRenderer = explicit?.renderShell || explicit?.renderCall || explicit?.renderResult;
+	if (hasExplicitRenderer || !createAllToolRenderers()[toolName as ToolName]) return undefined;
 	return profile;
 }
