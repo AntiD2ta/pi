@@ -1,5 +1,14 @@
 import { join, resolve } from "node:path";
-import { Container, setKeybindings, Text, type TUI, type TuiMouseEvent } from "@earendil-works/pi-tui";
+import {
+	type Component,
+	Container,
+	getCapabilities,
+	setCapabilities,
+	setKeybindings,
+	Text,
+	type TUI,
+	type TuiMouseEvent,
+} from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { beforeAll, describe, expect, test } from "vitest";
 import { getReadmePath } from "../src/config.ts";
@@ -41,12 +50,11 @@ describe("ToolExecutionComponent parity", () => {
 		initTheme("dark");
 	});
 
-	test("keeps explicit renderers outside profile frames", () => {
+	test("preserves inherited native slots for partial built-in overrides", () => {
 		const profile: ToolRendererProfile = {
 			frame: ({ call }) => call,
 		};
 		const explicit: ToolRenderers = {
-			renderShell: "default",
 			renderCall: () => new Text("explicit call", 0, 0),
 		};
 		const renderers = resolveToolRenderers("read", explicit);
@@ -58,8 +66,9 @@ describe("ToolExecutionComponent parity", () => {
 					.join("\n") ?? "",
 			),
 		).toContain("explicit call");
+		expect(renderers?.renderResult).toBeDefined();
 		expect(resolveToolRendererProfile("read", explicit, profile)).toBeUndefined();
-		expect(resolveToolRendererProfile("read", undefined, profile)).toBe(profile);
+		expect(resolveToolRendererProfile("read", {}, profile)).toBe(profile);
 		expect(resolveToolRendererProfile("custom_tool", undefined, profile)).toBeUndefined();
 	});
 
@@ -96,6 +105,52 @@ describe("ToolExecutionComponent parity", () => {
 
 		expect(received).toMatchObject({ call: expect.stringContaining("notes.txt"), expandKeyText: "ctrl+shift+m" });
 		expect(received?.result).toContain("native result");
+	});
+
+	test("passes native images to a profile frame with the result", () => {
+		const previousCapabilities = getCapabilities();
+		setCapabilities({ ...previousCapabilities, images: "iterm2" });
+		let framedResult: Component | undefined;
+		const profile: ToolRendererProfile = {
+			frame: ({ call, result }) => {
+				framedResult = result;
+				const frame = new Container();
+				frame.addChild(call);
+				if (result) frame.addChild(result);
+				return frame;
+			},
+		};
+		try {
+			const component = new ToolExecutionComponent(
+				"read",
+				"tool-profile-image",
+				{ path: "image.png" },
+				{ rendererProfile: profile },
+				createReadToolDefinition(process.cwd()),
+				createFakeTui(),
+				process.cwd(),
+			);
+			component.setExpanded(true);
+			component.updateResult(
+				{
+					content: [
+						{ type: "text", text: "native image" },
+						{
+							type: "image",
+							data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mNk+M/wHwAF/gL+FvN3AAAAAElFTkSuQmCC",
+							mimeType: "image/png",
+						},
+					],
+					details: undefined,
+					isError: false,
+				},
+				false,
+			);
+
+			expect(framedResult?.render(120).join("\n")).toContain("\x1b]1337;File=");
+		} finally {
+			setCapabilities(previousCapabilities);
+		}
 	});
 
 	test("falls back to Pi rendering when a profile frame throws", () => {

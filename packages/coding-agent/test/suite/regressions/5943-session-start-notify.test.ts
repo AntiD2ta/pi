@@ -90,6 +90,7 @@ type RebindContext = {
 	bindCurrentSessionExtensions: () => Promise<void>;
 	subscribeToAgent: () => void;
 	updateAvailableProviderCount: () => Promise<void>;
+	subscribeToToolRendererProfile: () => void;
 	updateEditorBorderColor: () => void;
 	updateTerminalTitle: () => void;
 };
@@ -130,6 +131,7 @@ type ReloadCommandContext = {
 	rebuildChatFromMessages: () => void;
 	setupAutocompleteProvider: () => void;
 	setupExtensionShortcuts: (runner: unknown) => void;
+	subscribeToToolRendererProfile: () => void;
 	showLoadedResources: (options: unknown) => void;
 	maybeSaveImplicitProjectTrustAfterReload: () => boolean;
 	showStatus: (message: string) => void;
@@ -204,6 +206,7 @@ function createReloadCommandContext(overrides: ReloadCommandContextOverrides = {
 		rebuildChatFromMessages: overrides.rebuildChatFromMessages ?? (() => {}),
 		setupAutocompleteProvider: overrides.setupAutocompleteProvider ?? (() => {}),
 		setupExtensionShortcuts: overrides.setupExtensionShortcuts ?? (() => {}),
+		subscribeToToolRendererProfile: overrides.subscribeToToolRendererProfile ?? (() => {}),
 		showLoadedResources: overrides.showLoadedResources ?? (() => {}),
 		maybeSaveImplicitProjectTrustAfterReload: overrides.maybeSaveImplicitProjectTrustAfterReload ?? (() => false),
 		showStatus: overrides.showStatus ?? (() => {}),
@@ -306,6 +309,7 @@ describe("regression #5943: session_start transient UI", () => {
 				},
 				subscribeToAgent: () => events.push("subscribe"),
 				updateAvailableProviderCount: async () => {},
+				subscribeToToolRendererProfile: () => {},
 				updateEditorBorderColor: () => {},
 				updateTerminalTitle: () => {},
 			};
@@ -355,6 +359,7 @@ describe("regression #5943: session_start transient UI", () => {
 					});
 				},
 				updateAvailableProviderCount: async () => {},
+				subscribeToToolRendererProfile: () => {},
 				updateEditorBorderColor: () => {},
 				updateTerminalTitle: () => {},
 			};
@@ -407,6 +412,7 @@ describe("regression #5943: session_start transient UI", () => {
 					});
 				},
 				updateAvailableProviderCount: async () => {},
+				subscribeToToolRendererProfile: () => {},
 				updateEditorBorderColor: () => {},
 				updateTerminalTitle: () => {},
 			};
@@ -454,6 +460,23 @@ describe("regression #5943: session_start transient UI", () => {
 		} finally {
 			harness.cleanup();
 		}
+	});
+
+	it("replaces the tool profile subscription after reload session_start", async () => {
+		const events: string[] = [];
+		const context = createReloadCommandContext({
+			session: {
+				reload: async (options) => {
+					await options?.beforeSessionStart?.();
+					events.push("session_start");
+				},
+			},
+			subscribeToToolRendererProfile: () => events.push("subscribe-profile"),
+		});
+
+		await interactiveModePrototype.handleReloadCommand.call(context);
+
+		expect(events).toEqual(["session_start", "subscribe-profile"]);
 	});
 
 	it("refreshes hideThinkingBlock before rebuilding chat during reload", async () => {

@@ -356,18 +356,41 @@ export class ToolExecutionComponent extends Container {
 			const resultRegion = result && this.createResultRegion(result);
 
 			if (this.rendererProfile && this.getRenderShell() !== "self") {
+				const frameResult = this.result ? new Container() : undefined;
+				if (frameResult && resultRegion) frameResult.addChild(resultRegion);
+				if (frameResult) {
+					const imageBlocks = this.result?.content.filter((content) => content.type === "image") ?? [];
+					const caps = getCapabilities();
+					for (let i = 0; i < imageBlocks.length; i++) {
+						const image = imageBlocks[i];
+						if (!caps.images || !this.showImages || !image.data || !image.mimeType) continue;
+						const converted = this.convertedImages.get(i);
+						const imageData = converted?.data ?? image.data;
+						const imageMimeType = converted?.mimeType ?? image.mimeType;
+						if (caps.images === "kitty" && imageMimeType !== "image/png") continue;
+						frameResult.addChild(new Spacer(1));
+						frameResult.addChild(
+							new Image(
+								imageData,
+								imageMimeType,
+								{ fallbackColor: (text: string) => theme.fg("toolOutput", text) },
+								{ maxWidthCells: this.imageWidthCells },
+							),
+						);
+					}
+				}
 				try {
 					this.renderRoot.addChild(
 						this.rendererProfile.frame({
 							call: callRegion,
-							result: resultRegion,
+							result: frameResult,
 							state: this.isPartial ? "pending" : this.result?.isError ? "error" : "success",
 							expandKeyText: keyText("app.tools.expand"),
 						}),
 					);
 				} catch {
 					renderContainer.addChild(callRegion);
-					if (resultRegion) renderContainer.addChild(resultRegion);
+					if (frameResult) renderContainer.addChild(frameResult);
 					this.renderRoot.addChild(renderContainer);
 				}
 			} else {
@@ -391,7 +414,7 @@ export class ToolExecutionComponent extends Container {
 		}
 		this.imageSpacers = [];
 
-		if (this.result) {
+		if (this.result && (!this.rendererProfile || this.getRenderShell() === "self")) {
 			const imageBlocks = this.result.content.filter((c) => c.type === "image");
 			const caps = getCapabilities();
 			for (let i = 0; i < imageBlocks.length; i++) {

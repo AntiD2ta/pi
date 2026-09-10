@@ -2024,11 +2024,7 @@ export class InteractiveMode {
 			this.subscribeToAgent();
 		}
 
-		this.unsubscribeToolRendererProfile?.();
-		this.unsubscribeToolRendererProfile = this.session.extensionRunner.onToolRendererProfileChange(() => {
-			this.refreshToolRendererProfiles();
-		});
-		this.refreshToolRendererProfiles();
+		this.subscribeToToolRendererProfile();
 
 		await this.updateAvailableProviderCount();
 		this.updateEditorBorderColor();
@@ -2052,6 +2048,14 @@ export class InteractiveMode {
 		this.streamingMessage = undefined;
 		this.pendingTools.clear();
 		this.renderInitialMessages();
+	}
+
+	private subscribeToToolRendererProfile(): void {
+		this.unsubscribeToolRendererProfile?.();
+		this.unsubscribeToolRendererProfile = this.session.extensionRunner.onToolRendererProfileChange(() => {
+			this.refreshToolRendererProfiles();
+		});
+		this.refreshToolRendererProfiles();
 	}
 
 	private getExplicitToolDefinition(toolName: string) {
@@ -6224,6 +6228,7 @@ export class InteractiveMode {
 		try {
 			await this.session.reload({ beforeSessionStart: restoreChatBeforeSessionStart });
 			restoreChatBeforeSessionStart();
+			this.subscribeToToolRendererProfile();
 			this.keybindings.reload();
 			const activeHeader = this.customHeader ?? this.builtInHeader;
 			if (isExpandable(activeHeader)) {
