@@ -6,6 +6,7 @@ import { createInMemoryModelRegistry } from "./model-runtime-test-utils.ts";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { Component } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { createEventBus } from "../src/core/event-bus.ts";
@@ -601,11 +602,13 @@ describe("ExtensionRunner", () => {
 	describe("tool renderer profiles", () => {
 		it("restores the previous profile and ignores a stale release", async () => {
 			const runtime = createExtensionRuntime();
+			const firstProfile = { frame: ({ call }: { call: Component }) => call };
+			const secondProfile = { frame: ({ call }: { call: Component }) => call };
 			let releaseFirst: (() => void) | undefined;
 			let releaseSecond: (() => void) | undefined;
 			const first = await loadExtensionFromFactory(
 				(pi) => {
-					releaseFirst = pi.activateToolRendererProfile({ tools: { read: {} } });
+					releaseFirst = pi.activateToolRendererProfile(firstProfile);
 				},
 				tempDir,
 				createEventBus(),
@@ -614,7 +617,7 @@ describe("ExtensionRunner", () => {
 			);
 			const second = await loadExtensionFromFactory(
 				(pi) => {
-					releaseSecond = pi.activateToolRendererProfile({ tools: { bash: {} } });
+					releaseSecond = pi.activateToolRendererProfile(secondProfile);
 				},
 				tempDir,
 				createEventBus(),
@@ -623,15 +626,15 @@ describe("ExtensionRunner", () => {
 			);
 			const runner = new ExtensionRunner([first, second], runtime, tempDir, sessionManager, modelRegistry);
 
-			expect(runner.getActiveToolRendererProfile()?.tools).toEqual({ bash: {} });
+			expect(runner.getActiveToolRendererProfile()).toBe(secondProfile);
 			releaseSecond?.();
-			expect(runner.getActiveToolRendererProfile()?.tools).toEqual({ read: {} });
-			const releaseThird = runtime.activateToolRendererProfile({ tools: { bash: {} } });
+			expect(runner.getActiveToolRendererProfile()).toBe(firstProfile);
+			const releaseThird = runtime.activateToolRendererProfile(secondProfile);
 			releaseFirst?.();
-			expect(runner.getActiveToolRendererProfile()?.tools).toEqual({ bash: {} });
+			expect(runner.getActiveToolRendererProfile()).toBe(secondProfile);
 			releaseThird();
 			expect(runner.getActiveToolRendererProfile()).toBeUndefined();
-			runtime.activateToolRendererProfile({ tools: { read: {} } });
+			runtime.activateToolRendererProfile(firstProfile);
 			runtime.invalidate();
 			expect(runner.getActiveToolRendererProfile()).toBeUndefined();
 		});

@@ -62,22 +62,18 @@ export function withBuiltInRenderers<TDefinition extends ToolRenderers>(
 	};
 }
 
-/**
- * Resolve display slots without changing the executable tool definition. Explicit self-rendered
- * tools own their shell completely; otherwise each slot falls through independently.
- */
-export function resolveToolRenderers(
+/** Resolve Pi's native renderer slots without changing the executable tool definition. */
+export function resolveToolRenderers(toolName: string, explicit: ToolRenderers | undefined): ToolRenderers | undefined {
+	if (explicit) return explicit;
+	return createAllToolRenderers()[toolName as ToolName];
+}
+
+/** Resolve a display-only frame for built-in tool rows; explicit renderers keep full ownership. */
+export function resolveToolRendererProfile(
 	toolName: string,
 	explicit: ToolRenderers | undefined,
 	profile: ToolRendererProfile | undefined,
-): ToolRenderers | undefined {
-	if (explicit?.renderShell === "self") return explicit;
-	const profileRenderers = profile?.tools[toolName];
-	const builtIn = createAllToolRenderers()[toolName as ToolName];
-	if (!explicit && !profileRenderers && !builtIn) return undefined;
-	return {
-		renderShell: explicit?.renderShell ?? profileRenderers?.renderShell,
-		renderCall: explicit?.renderCall ?? profileRenderers?.renderCall ?? builtIn?.renderCall,
-		renderResult: explicit?.renderResult ?? profileRenderers?.renderResult ?? builtIn?.renderResult,
-	};
+): ToolRendererProfile | undefined {
+	if (explicit || !createAllToolRenderers()[toolName as ToolName]) return undefined;
+	return profile;
 }
