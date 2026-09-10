@@ -73,7 +73,8 @@ export function resolveToolRendererProfile(
 	explicit: ToolRenderers | undefined,
 	profile: ToolRendererProfile | undefined,
 ): ToolRendererProfile | undefined {
-	const hasExplicitRenderer = explicit?.renderShell || explicit?.renderCall || explicit?.renderResult;
+	const hasExplicitRenderer =
+		explicit?.renderShell !== undefined || explicit?.renderCall !== undefined || explicit?.renderResult !== undefined;
 	if (hasExplicitRenderer || !createAllToolRenderers()[toolName as ToolName]) return undefined;
 	return profile;
 }

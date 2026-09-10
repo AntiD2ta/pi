@@ -359,24 +359,9 @@ export class ToolExecutionComponent extends Container {
 				const frameResult = this.result ? new Container() : undefined;
 				if (frameResult && resultRegion) frameResult.addChild(resultRegion);
 				if (frameResult) {
-					const imageBlocks = this.result?.content.filter((content) => content.type === "image") ?? [];
-					const caps = getCapabilities();
-					for (let i = 0; i < imageBlocks.length; i++) {
-						const image = imageBlocks[i];
-						if (!caps.images || !this.showImages || !image.data || !image.mimeType) continue;
-						const converted = this.convertedImages.get(i);
-						const imageData = converted?.data ?? image.data;
-						const imageMimeType = converted?.mimeType ?? image.mimeType;
-						if (caps.images === "kitty" && imageMimeType !== "image/png") continue;
-						frameResult.addChild(new Spacer(1));
-						frameResult.addChild(
-							new Image(
-								imageData,
-								imageMimeType,
-								{ fallbackColor: (text: string) => theme.fg("toolOutput", text) },
-								{ maxWidthCells: this.imageWidthCells },
-							),
-						);
+					for (const { spacer, image } of this.createImageComponents()) {
+						frameResult.addChild(spacer);
+						frameResult.addChild(image);
 					}
 				}
 				try {
@@ -415,34 +400,44 @@ export class ToolExecutionComponent extends Container {
 		this.imageSpacers = [];
 
 		if (this.result && (!this.rendererProfile || this.getRenderShell() === "self")) {
-			const imageBlocks = this.result.content.filter((c) => c.type === "image");
-			const caps = getCapabilities();
-			for (let i = 0; i < imageBlocks.length; i++) {
-				const img = imageBlocks[i];
-				if (caps.images && this.showImages && img.data && img.mimeType) {
-					const converted = this.convertedImages.get(i);
-					const imageData = converted?.data ?? img.data;
-					const imageMimeType = converted?.mimeType ?? img.mimeType;
-					if (caps.images === "kitty" && imageMimeType !== "image/png") continue;
-
-					const spacer = new Spacer(1);
-					this.addChild(spacer);
-					this.imageSpacers.push(spacer);
-					const imageComponent = new Image(
-						imageData,
-						imageMimeType,
-						{ fallbackColor: (s: string) => theme.fg("toolOutput", s) },
-						{ maxWidthCells: this.imageWidthCells },
-					);
-					this.imageComponents.push(imageComponent);
-					this.addChild(imageComponent);
-				}
+			for (const { spacer, image } of this.createImageComponents()) {
+				this.addChild(spacer);
+				this.imageSpacers.push(spacer);
+				this.imageComponents.push(image);
+				this.addChild(image);
 			}
 		}
 
 		if (this.hasRendererDefinition() && !hasContent && this.imageComponents.length === 0) {
 			this.hideComponent = true;
 		}
+	}
+
+	private createImageComponents(): Array<{ spacer: Spacer; image: Image }> {
+		if (!this.result || !this.showImages) return [];
+		const caps = getCapabilities();
+		if (!caps.images) return [];
+
+		const imageBlocks = this.result.content.filter((content) => content.type === "image");
+		const components: Array<{ spacer: Spacer; image: Image }> = [];
+		for (let i = 0; i < imageBlocks.length; i++) {
+			const image = imageBlocks[i];
+			if (!image?.data || !image.mimeType) continue;
+			const converted = this.convertedImages.get(i);
+			const imageData = converted?.data ?? image.data;
+			const imageMimeType = converted?.mimeType ?? image.mimeType;
+			if (caps.images === "kitty" && imageMimeType !== "image/png") continue;
+			components.push({
+				spacer: new Spacer(1),
+				image: new Image(
+					imageData,
+					imageMimeType,
+					{ fallbackColor: (text: string) => theme.fg("toolOutput", text) },
+					{ maxWidthCells: this.imageWidthCells },
+				),
+			});
+		}
+		return components;
 	}
 
 	private getTextOutput(): string {
