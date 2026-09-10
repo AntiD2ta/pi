@@ -1,6 +1,6 @@
 # Development Rules
 
-For AntiD2ta/pi changes, push branches to fork and open PRs against AntiD2ta/pi:main; treat earendil-works/pi (origin) as upstream-only and never open implementation PRs there.
+For AntiD2ta/pi changes, push branches to fork and open PRs against AntiD2ta/pi:main; treat earendil-works/pi (origin) as upstream-only and never open implementation PRs there.  
 
 ## Plane projects
 
@@ -29,6 +29,33 @@ When asked to "Pick PI-X":
 5. For agent-facing documentation, load `/skill:writing-for-agents`. Apply `/skill:unslop` to other documentation.
 6. Commit and push under the Git rules below. Use `/skill:show-me` for the PR body. Prefer `/skill:gh-stack` when related work items form independently reviewable vertical slices.
 7. Before reporting task completion, add a work item comment summarizing completed work, relevant findings or learning, blockers, and the resulting work item state.
+
+## Visual validation and smoke tests
+
+For visual TUI work, leave implementation uncommitted until a human signs off.
+
+Use Herdr only when `HERDR_ENV=1`. Create validation tabs with
+`herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$PWD" --label "<task>" --no-focus`.
+Never steal the user's focus.
+
+Use a two-agent trial:
+1. Start a writable Sol coordinator in the first background tab.
+2. Sol creates a second background Herdr tab for a Luna smoke-test agent.
+3. Luna runs the local Pi build and leaves its interactive TUI visible.
+4. Sol drives Luna with repeatable smoke-test prompts and steering. The human inspects Luna's tab.
+5. Keep both agents and tabs open until the human signs off. Do not commit, push, or create a PR first.
+
+When a model call is needed, add a test-only faux-provider extension under the affected package's `tests/` support files. It must:
+- import `fauxProvider()` from `@earendil-works/pi-ai`;
+- register it programmatically through Pi's extension API;
+- use scripted responses that exercise the exact built-in tools and states under review;
+- use no network, credentials, or paid provider;
+- remain outside production package entries and runtime behavior.
+
+Build the local core checkout with `npm ci --ignore-scripts` and `npm run build`. Link only the local `pi-ai`, `pi-tui`, and `pi-coding-agent` workspaces for development. Verify resolved paths. Do not commit path dependencies, lockfile changes, peer-range changes, build outputs, or trial data.
+
+Record exact trial commands, generated artifacts, resolved package paths, test results, visual sign-off status, and
+cleanup commands in the work item handoff.
 
 ## Conversational Style
 
