@@ -97,7 +97,7 @@ import type { FullscreenExitOutput, TuiMode } from "../../core/settings-manager.
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
-import { resolveToolRenderers } from "../../core/tools/renderers/index.ts";
+import { resolveToolRendererProfile, resolveToolRenderers } from "../../core/tools/renderers/index.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../core/trust-manager.ts";
 import { getUsageCostBreakdown } from "../../core/usage-totals.ts";
@@ -2054,12 +2054,19 @@ export class InteractiveMode {
 		this.renderInitialMessages();
 	}
 
-	/** Resolve explicit extension/MCP slots, the active profile, then Pi's built-in renderer. */
+	/** Resolve native slots first; explicit extension and MCP renderers bypass display-only frames. */
 	private getRegisteredToolDefinition(toolName: string) {
 		const definition = this.session.getToolDefinition(toolName);
 		const explicitDefinition =
 			this.session.getToolDefinitionSource(toolName)?.source === "builtin" ? undefined : definition;
-		return resolveToolRenderers(
+		return resolveToolRenderers(toolName, explicitDefinition);
+	}
+
+	private getToolRendererProfile(toolName: string) {
+		const definition = this.session.getToolDefinition(toolName);
+		const explicitDefinition =
+			this.session.getToolDefinitionSource(toolName)?.source === "builtin" ? undefined : definition;
+		return resolveToolRendererProfile(
 			toolName,
 			explicitDefinition,
 			this.session.extensionRunner.getActiveToolRendererProfile(),
@@ -2070,6 +2077,7 @@ export class InteractiveMode {
 		for (const component of this.chatContainer.children) {
 			if (component instanceof ToolExecutionComponent) {
 				component.setToolDefinition(this.getRegisteredToolDefinition(component.getToolName()));
+				component.setToolRendererProfile(this.getToolRendererProfile(component.getToolName()));
 			}
 		}
 	}
@@ -3459,6 +3467,7 @@ export class InteractiveMode {
 									{
 										showImages: this.settingsManager.getShowImages(),
 										imageWidthCells: this.settingsManager.getImageWidthCells(),
+										rendererProfile: this.getToolRendererProfile(content.name),
 									},
 									this.getRegisteredToolDefinition(content.name),
 									this.ui,
@@ -3534,6 +3543,7 @@ export class InteractiveMode {
 						{
 							showImages: this.settingsManager.getShowImages(),
 							imageWidthCells: this.settingsManager.getImageWidthCells(),
+							rendererProfile: this.getToolRendererProfile(event.toolName),
 						},
 						this.getRegisteredToolDefinition(event.toolName),
 						this.ui,
@@ -3921,6 +3931,7 @@ export class InteractiveMode {
 							{
 								showImages: this.settingsManager.getShowImages(),
 								imageWidthCells: this.settingsManager.getImageWidthCells(),
+								rendererProfile: this.getToolRendererProfile(content.name),
 							},
 							this.getRegisteredToolDefinition(content.name),
 							this.ui,

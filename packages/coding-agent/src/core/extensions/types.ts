@@ -535,12 +535,23 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 /** Display-only renderer slots for a tool. */
 export type ToolRenderers = Pick<ToolDefinition<any, any, any>, "renderShell" | "renderCall" | "renderResult">;
 
+/** State used to style a display-only tool frame. */
+export type ToolRendererFrameState = "pending" | "success" | "error";
+
+/** Pi-rendered content passed to a display-only tool frame. */
+export interface ToolRendererFrameContext {
+	call: Component;
+	result: Component | undefined;
+	state: ToolRendererFrameState;
+	expandKeyText: string;
+}
+
 /**
- * An opt-in display-only profile for built-in and conventionally rendered tools.
- * A profile never registers executable tools or changes model-visible tool definitions.
+ * An opt-in display-only frame for built-in tool rows.
+ * The profile must retain the Pi-rendered call and result components and never changes tool execution or result data.
  */
 export interface ToolRendererProfile {
-	tools: Record<string, ToolRenderers | undefined>;
+	frame: (context: ToolRendererFrameContext) => Component;
 }
 
 type AnyToolDefinition = ToolDefinition<any, any, any>;

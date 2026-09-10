@@ -10,20 +10,27 @@ import {
 	type TUI,
 	type TuiMouseEvent,
 } from "@earendil-works/pi-tui";
-import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../core/extensions/types.ts";
+import type {
+	ToolDefinition,
+	ToolRenderContext,
+	ToolRendererProfile,
+	ToolRenderers,
+} from "../../../core/extensions/types.ts";
 
 export type { ToolRenderers } from "../../../core/extensions/types.ts";
 
 import { getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
 import { convertToPng } from "../../../utils/image-convert.ts";
 import { theme } from "../theme/theme.ts";
-import { keyHint } from "./keybinding-hints.ts";
+import { keyHint, keyText } from "./keybinding-hints.ts";
 
 const FALLBACK_PREVIEW_LINES = 10;
 
 export interface ToolExecutionOptions {
 	showImages?: boolean;
 	imageWidthCells?: number;
+	/** Display-only frame for Pi-rendered built-in tool content. */
+	rendererProfile?: ToolRendererProfile;
 }
 
 export class ToolExecutionComponent extends Container {
@@ -46,6 +53,7 @@ export class ToolExecutionComponent extends Container {
 	private imageWidthCells: number;
 	private isPartial = true;
 	private toolDefinition?: ToolRenderers;
+	private rendererProfile?: ToolRendererProfile;
 	private ui: TUI;
 	private cwd: string;
 	private executionStarted = false;
@@ -72,6 +80,7 @@ export class ToolExecutionComponent extends Container {
 		this.toolCallId = toolCallId;
 		this.args = args;
 		this.toolDefinition = toolDefinition;
+		this.rendererProfile = options.rendererProfile;
 		this.showImages = options.showImages ?? true;
 		this.imageWidthCells = options.imageWidthCells ?? 60;
 		this.ui = ui;
@@ -163,6 +172,13 @@ export class ToolExecutionComponent extends Container {
 	/** Replace the display definition without changing this row's execution or result state. */
 	setToolDefinition(toolDefinition: ToolRenderers | ToolDefinition<any, any, any> | undefined): void {
 		this.toolDefinition = toolDefinition;
+		this.updateDisplay();
+		this.ui.requestRender();
+	}
+
+	/** Replace the display-only frame without changing this row's execution or result state. */
+	setToolRendererProfile(rendererProfile: ToolRendererProfile | undefined): void {
+		this.rendererProfile = rendererProfile;
 		this.updateDisplay();
 		this.ui.requestRender();
 	}
@@ -296,57 +312,68 @@ export class ToolExecutionComponent extends Container {
 		this.renderRoot.clear();
 		if (this.hasRendererDefinition()) {
 			const renderContainer = this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox;
-			this.renderRoot.addChild(renderContainer);
+			renderContainer.clear();
 			if (renderContainer instanceof Box) {
 				renderContainer.setBgFn(bgFn);
 			}
-			renderContainer.clear();
 
+			let call: Component;
 			const callRenderer = this.getCallRenderer();
 			if (!callRenderer) {
-				renderContainer.addChild(this.createResultRegion(this.createCallFallback()));
-				hasContent = true;
+				call = this.createCallFallback();
 			} else {
 				try {
-					const component = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
-					this.callRendererComponent = component;
-					renderContainer.addChild(this.createResultRegion(component));
-					hasContent = true;
+					call = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
+					this.callRendererComponent = call;
 				} catch {
 					this.callRendererComponent = undefined;
-					renderContainer.addChild(this.createResultRegion(this.createCallFallback()));
-					hasContent = true;
+					call = this.createCallFallback();
 				}
 			}
+			const callRegion = this.createResultRegion(call);
+			hasContent = true;
 
+			let result: Component | undefined;
 			if (this.result) {
 				const resultRenderer = this.getResultRenderer();
 				if (!resultRenderer) {
-					const component = this.createResultFallback();
-					if (component) {
-						renderContainer.addChild(this.createResultRegion(component));
-						hasContent = true;
-					}
+					result = this.createResultFallback();
 				} else {
 					try {
-						const component = resultRenderer(
+						result = resultRenderer(
 							{ content: this.result.content as any, details: this.result.details },
 							{ expanded: this.expanded, isPartial: this.isPartial },
 							theme,
 							this.getRenderContext(this.resultRendererComponent),
 						);
-						this.resultRendererComponent = component;
-						renderContainer.addChild(this.createResultRegion(component));
-						hasContent = true;
+						this.resultRendererComponent = result;
 					} catch {
 						this.resultRendererComponent = undefined;
-						const component = this.createResultFallback();
-						if (component) {
-							renderContainer.addChild(this.createResultRegion(component));
-							hasContent = true;
-						}
+						result = this.createResultFallback();
 					}
 				}
+			}
+			const resultRegion = result && this.createResultRegion(result);
+
+			if (this.rendererProfile && this.getRenderShell() !== "self") {
+				try {
+					this.renderRoot.addChild(
+						this.rendererProfile.frame({
+							call: callRegion,
+							result: resultRegion,
+							state: this.isPartial ? "pending" : this.result?.isError ? "error" : "success",
+							expandKeyText: keyText("app.tools.expand"),
+						}),
+					);
+				} catch {
+					renderContainer.addChild(callRegion);
+					if (resultRegion) renderContainer.addChild(resultRegion);
+					this.renderRoot.addChild(renderContainer);
+				}
+			} else {
+				renderContainer.addChild(callRegion);
+				if (resultRegion) renderContainer.addChild(resultRegion);
+				this.renderRoot.addChild(renderContainer);
 			}
 		} else {
 			this.contentText.setCustomBgFn(bgFn);

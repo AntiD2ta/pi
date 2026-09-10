@@ -1,12 +1,17 @@
 import { join, resolve } from "node:path";
-import { Text, type TUI, type TuiMouseEvent } from "@earendil-works/pi-tui";
+import { Container, setKeybindings, Text, type TUI, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { beforeAll, describe, expect, test } from "vitest";
 import { getReadmePath } from "../src/config.ts";
 import type { ToolDefinition, ToolRendererProfile, ToolRenderers } from "../src/core/extensions/types.ts";
+import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { type BashOperations, createBashToolDefinition } from "../src/core/tools/bash.ts";
 import { createReadTool, createReadToolDefinition } from "../src/core/tools/read.ts";
-import { resolveToolRenderers, withBuiltInRenderers } from "../src/core/tools/renderers/index.ts";
+import {
+	resolveToolRendererProfile,
+	resolveToolRenderers,
+	withBuiltInRenderers,
+} from "../src/core/tools/renderers/index.ts";
 import { createWriteToolDefinition } from "../src/core/tools/write.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
@@ -36,20 +41,15 @@ describe("ToolExecutionComponent parity", () => {
 		initTheme("dark");
 	});
 
-	test("resolves display slots from explicit renderers, profile, then Pi", () => {
+	test("keeps explicit renderers outside profile frames", () => {
 		const profile: ToolRendererProfile = {
-			tools: {
-				read: {
-					renderCall: () => new Text("profile call", 0, 0),
-					renderResult: () => new Text("profile result", 0, 0),
-				},
-			},
+			frame: ({ call }) => call,
 		};
 		const explicit: ToolRenderers = {
 			renderShell: "default",
 			renderCall: () => new Text("explicit call", 0, 0),
 		};
-		const renderers = resolveToolRenderers("read", explicit, profile);
+		const renderers = resolveToolRenderers("read", explicit);
 		expect(
 			stripAnsi(
 				renderers
@@ -58,21 +58,69 @@ describe("ToolExecutionComponent parity", () => {
 					.join("\n") ?? "",
 			),
 		).toContain("explicit call");
-		expect(
-			stripAnsi(
-				renderers
-					?.renderResult?.(
-						{ content: [], details: undefined },
-						{ expanded: false, isPartial: false },
-						theme,
-						{} as never,
-					)
-					.render(120)
-					.join("\n") ?? "",
-			),
-		).toContain("profile result");
-		expect(renderers?.renderShell).toBe("default");
-		expect(resolveToolRenderers("read", { renderShell: "self" }, profile)).toEqual({ renderShell: "self" });
+		expect(resolveToolRendererProfile("read", explicit, profile)).toBeUndefined();
+		expect(resolveToolRendererProfile("read", undefined, profile)).toBe(profile);
+		expect(resolveToolRendererProfile("custom_tool", undefined, profile)).toBeUndefined();
+	});
+
+	test("passes Pi-rendered slots and the configured expand key to a profile frame", () => {
+		setKeybindings(new KeybindingsManager({ "app.tools.expand": "ctrl+shift+m" }));
+		let received: { call: string; result: string | undefined; expandKeyText: string } | undefined;
+		const profile: ToolRendererProfile = {
+			frame: ({ call, result, expandKeyText }) => {
+				received = {
+					call: stripAnsi(call.render(120).join("\n")),
+					result: result && stripAnsi(result.render(120).join("\n")),
+					expandKeyText,
+				};
+				const frame = new Container();
+				frame.addChild(call);
+				if (result) frame.addChild(result);
+				return frame;
+			},
+		};
+		const component = new ToolExecutionComponent(
+			"read",
+			"tool-profile-frame",
+			{ path: "notes.txt" },
+			{ rendererProfile: profile },
+			createReadToolDefinition(process.cwd()),
+			createFakeTui(),
+			process.cwd(),
+		);
+		component.setExpanded(true);
+		component.updateResult(
+			{ content: [{ type: "text", text: "native result" }], details: undefined, isError: false },
+			false,
+		);
+
+		expect(received).toMatchObject({ call: expect.stringContaining("notes.txt"), expandKeyText: "ctrl+shift+m" });
+		expect(received?.result).toContain("native result");
+	});
+
+	test("falls back to Pi rendering when a profile frame throws", () => {
+		const component = new ToolExecutionComponent(
+			"read",
+			"tool-profile-frame-error",
+			{ path: "notes.txt" },
+			{
+				rendererProfile: {
+					frame: () => {
+						throw new Error("frame failed");
+					},
+				},
+			},
+			createReadToolDefinition(process.cwd()),
+			createFakeTui(),
+			process.cwd(),
+		);
+		component.setExpanded(true);
+		component.updateResult(
+			{ content: [{ type: "text", text: "native result" }], details: undefined, isError: false },
+			false,
+		);
+
+		expect(stripAnsi(component.render(120).join("\n"))).toContain("native result");
 	});
 
 	test("stacks custom call and result renderers like the old implementation", () => {
