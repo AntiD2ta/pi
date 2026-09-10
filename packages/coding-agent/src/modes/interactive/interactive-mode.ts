@@ -2054,21 +2054,20 @@ export class InteractiveMode {
 		this.renderInitialMessages();
 	}
 
+	private getExplicitToolDefinition(toolName: string) {
+		const definition = this.session.getToolDefinition(toolName);
+		return this.session.getToolDefinitionSource(toolName)?.source === "builtin" ? undefined : definition;
+	}
+
 	/** Resolve native slots first; explicit extension and MCP renderers bypass display-only frames. */
 	private getRegisteredToolDefinition(toolName: string) {
-		const definition = this.session.getToolDefinition(toolName);
-		const explicitDefinition =
-			this.session.getToolDefinitionSource(toolName)?.source === "builtin" ? undefined : definition;
-		return resolveToolRenderers(toolName, explicitDefinition);
+		return resolveToolRenderers(toolName, this.getExplicitToolDefinition(toolName));
 	}
 
 	private getToolRendererProfile(toolName: string) {
-		const definition = this.session.getToolDefinition(toolName);
-		const explicitDefinition =
-			this.session.getToolDefinitionSource(toolName)?.source === "builtin" ? undefined : definition;
 		return resolveToolRendererProfile(
 			toolName,
-			explicitDefinition,
+			this.getExplicitToolDefinition(toolName),
 			this.session.extensionRunner.getActiveToolRendererProfile(),
 		);
 	}
