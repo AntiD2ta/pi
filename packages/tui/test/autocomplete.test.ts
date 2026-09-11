@@ -4,7 +4,11 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, it, test } from "node:test";
-import { CombinedAutocompleteProvider } from "../src/autocomplete.ts";
+import {
+	type AutocompleteProvider,
+	CombinedAutocompleteProvider,
+	SkillReferenceAutocompleteProvider,
+} from "../src/autocomplete.ts";
 
 const resolveFdPath = (): string | null => {
 	const command = process.platform === "win32" ? "where" : "which";
@@ -47,7 +51,7 @@ const requireFdPath = (): string => {
 };
 
 const getSuggestions = (
-	provider: CombinedAutocompleteProvider,
+	provider: AutocompleteProvider,
 	lines: string[],
 	cursorLine: number,
 	cursorCol: number,
@@ -573,6 +577,59 @@ describe("CombinedAutocompleteProvider", () => {
 
 			const applied = provider.applyCompletion([line], 0, cursorCol, item!, result!.prefix);
 			assert.strictEqual(applied.lines[0], '"my folder/test.txt"');
+		});
+	});
+
+	describe("inline slash completion", () => {
+		it("returns an inline completion for one prefix match without using fuzzy-only matches", async () => {
+			const provider = new CombinedAutocompleteProvider(
+				[
+					{ name: "skill:review-local", description: "Review local changes" },
+					{ name: "model", description: "Select model" },
+				],
+				"/tmp",
+			);
+
+			const uniquePrefix = await getSuggestions(provider, ["/skill:rev"], 0, 10);
+			assert.strictEqual(uniquePrefix?.inlineCompletion?.value, "skill:review-local");
+
+			const fuzzyOnly = await getSuggestions(provider, ["/srl"], 0, 4);
+			assert.strictEqual(fuzzyOnly?.inlineCompletion, undefined);
+		});
+
+		it("keeps the dropdown for ambiguous prefix matches", async () => {
+			const provider = new CombinedAutocompleteProvider(
+				[
+					{ name: "model", description: "Select model" },
+					{ name: "models", description: "Select models" },
+				],
+				"/tmp",
+			);
+
+			const suggestions = await getSuggestions(provider, ["/mo"], 0, 3);
+			assert.strictEqual(suggestions?.inlineCompletion, undefined);
+			assert.deepStrictEqual(
+				suggestions?.items.map((item) => item.value),
+				["model", "models"],
+			);
+		});
+
+		it("completes a non-leading skill reference without a trailing space", async () => {
+			const provider = new SkillReferenceAutocompleteProvider(new CombinedAutocompleteProvider([], "/tmp"), [
+				{ value: "/skill:review-local", label: "skill:review-local" },
+			]);
+			const line = "Please use /skill:rev";
+			const suggestions = await getSuggestions(provider, [line], 0, line.length);
+			assert.strictEqual(suggestions?.inlineCompletion?.value, "/skill:review-local");
+
+			const completion = provider.applyCompletion(
+				[line],
+				0,
+				line.length,
+				suggestions!.inlineCompletion!,
+				suggestions!.prefix,
+			);
+			assert.strictEqual(completion.lines[0], "Please use /skill:review-local");
 		});
 	});
 });
