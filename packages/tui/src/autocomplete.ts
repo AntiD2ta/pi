@@ -241,6 +241,8 @@ export interface SlashCommand {
 export interface AutocompleteSuggestions {
 	items: AutocompleteItem[];
 	prefix: string; // What we're matching against (e.g., "/" or "src/")
+	/** One unambiguous prefix match that the editor may render inline. */
+	inlineCompletion?: AutocompleteItem;
 }
 
 export interface AutocompleteProvider {
@@ -335,9 +337,12 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 
 				if (filtered.length === 0) return null;
 
+				const prefixMatches = filtered.filter((item) => item.value.startsWith(prefix));
+				const inlineCompletion = prefixMatches.length === 1 ? prefixMatches[0] : undefined;
 				return {
 					items: filtered,
 					prefix: textBeforeCursor,
+					...(inlineCompletion && { inlineCompletion }),
 				};
 			}
 
@@ -822,5 +827,63 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		}
 
 		return true;
+	}
+}
+
+/** Adds literal, whitespace-delimited skill references to an existing provider. */
+export class SkillReferenceAutocompleteProvider implements AutocompleteProvider {
+	private readonly current: AutocompleteProvider;
+	private readonly skills: AutocompleteItem[];
+
+	constructor(current: AutocompleteProvider, skills: AutocompleteItem[]) {
+		this.current = current;
+		this.skills = skills;
+	}
+
+	get triggerCharacters(): string[] | undefined {
+		return this.current.triggerCharacters;
+	}
+
+	async getSuggestions(
+		lines: string[],
+		cursorLine: number,
+		cursorCol: number,
+		options: { signal: AbortSignal; force?: boolean },
+	): Promise<AutocompleteSuggestions | null> {
+		const textBeforeCursor = (lines[cursorLine] ?? "").slice(0, cursorCol);
+		const match = textBeforeCursor.match(/(?:^|[ \t])(\/skill:[^\s]*)$/);
+		if (!match || match.index === 0) {
+			return this.current.getSuggestions(lines, cursorLine, cursorCol, options);
+		}
+
+		const prefix = match[1]!;
+		const items = fuzzyFilter(this.skills, prefix, (item) => item.value);
+		if (items.length === 0) return null;
+		const prefixMatches = items.filter((item) => item.value.startsWith(prefix));
+		const inlineCompletion = prefixMatches.length === 1 ? prefixMatches[0] : undefined;
+		return { items, prefix, ...(inlineCompletion && { inlineCompletion }) };
+	}
+
+	applyCompletion(
+		lines: string[],
+		cursorLine: number,
+		cursorCol: number,
+		item: AutocompleteItem,
+		prefix: string,
+	): { lines: string[]; cursorLine: number; cursorCol: number } {
+		if (!prefix.startsWith("/skill:") || !item.value.startsWith("/skill:")) {
+			return this.current.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
+		}
+
+		const line = lines[cursorLine] ?? "";
+		const before = line.slice(0, cursorCol - prefix.length);
+		const after = line.slice(cursorCol);
+		const nextLines = [...lines];
+		nextLines[cursorLine] = before + item.value + after;
+		return { lines: nextLines, cursorLine, cursorCol: before.length + item.value.length };
+	}
+
+	shouldTriggerFileCompletion(lines: string[], cursorLine: number, cursorCol: number): boolean {
+		return this.current.shouldTriggerFileCompletion?.(lines, cursorLine, cursorCol) ?? true;
 	}
 }

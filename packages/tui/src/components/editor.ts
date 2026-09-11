@@ -230,6 +230,12 @@ interface LayoutLine {
 	text: string;
 	hasCursor: boolean;
 	cursorPos?: number;
+	inlineSuffix?: string;
+}
+
+interface InlineCompletion {
+	item: AutocompleteSuggestions["inlineCompletion"];
+	prefix: string;
 }
 
 export interface EditorTheme {
@@ -312,6 +318,7 @@ export class Editor implements Component, Focusable {
 	private autocompleteTriggerPattern = buildTriggerPattern(this.autocompleteTriggerCharacters);
 	private autocompleteDebouncePattern = buildDebouncePattern(this.autocompleteTriggerCharacters);
 	private autocompleteList?: SelectList;
+	private inlineCompletion?: InlineCompletion;
 	private autocompleteState: "regular" | "force" | null = null;
 	private autocompletePrefix: string = "";
 	private autocompleteMaxVisible: number = 5;
@@ -584,7 +591,14 @@ export class Editor implements Component, Focusable {
 					const firstGrapheme = afterGraphemes[0]?.segment || "";
 					const restAfter = after.slice(firstGrapheme.length);
 					const cursor = `\x1b[7m${firstGrapheme}\x1b[0m`;
-					displayText = before + marker + cursor + restAfter;
+					const inlineRemainder =
+						layoutLine.inlineSuffix && after.startsWith(layoutLine.inlineSuffix)
+							? layoutLine.inlineSuffix.slice(firstGrapheme.length)
+							: undefined;
+					const renderedRest = inlineRemainder
+						? `\x1b[2m${inlineRemainder}\x1b[22m` + restAfter.slice(inlineRemainder.length)
+						: restAfter;
+					displayText = before + marker + cursor + renderedRest;
 					// lineVisibleWidth stays the same - we're replacing, not adding
 				} else {
 					// Cursor is at the end - add highlighted space
@@ -595,6 +609,16 @@ export class Editor implements Component, Focusable {
 					if (lineVisibleWidth > contentWidth && paddingX > 0) {
 						cursorInPadding = true;
 					}
+				}
+			}
+
+			if (layoutLine.inlineSuffix) {
+				const suffixIndex = displayText.lastIndexOf(layoutLine.inlineSuffix);
+				if (suffixIndex >= 0) {
+					displayText =
+						displayText.slice(0, suffixIndex) +
+						`\x1b[2m${layoutLine.inlineSuffix}\x1b[22m` +
+						displayText.slice(suffixIndex + layoutLine.inlineSuffix.length);
 				}
 			}
 
@@ -749,6 +773,15 @@ export class Editor implements Component, Focusable {
 			return;
 		}
 
+		if (
+			this.inlineCompletion &&
+			(kb.matches(data, "tui.input.tab") ||
+				(kb.matches(data, "tui.editor.cursorRight") && this.isInlineCompletionBoundary()))
+		) {
+			this.applyInlineCompletion();
+			return;
+		}
+
 		// Handle autocomplete mode
 		if (this.autocompleteState && this.autocompleteList) {
 			if (kb.matches(data, "tui.select.cancel")) {
@@ -780,33 +813,6 @@ export class Editor implements Component, Focusable {
 					if (this.onChange) this.onChange(this.getText());
 				}
 				return;
-			}
-
-			if (kb.matches(data, "tui.select.confirm")) {
-				const selected = this.autocompleteList.getSelectedItem();
-				if (selected && this.autocompleteProvider) {
-					this.pushUndoSnapshot();
-					this.lastAction = null;
-					const result = this.autocompleteProvider.applyCompletion(
-						this.state.lines,
-						this.state.cursorLine,
-						this.state.cursorCol,
-						selected,
-						this.autocompletePrefix,
-					);
-					this.state.lines = result.lines;
-					this.state.cursorLine = result.cursorLine;
-					this.setCursorCol(result.cursorCol);
-
-					if (this.autocompletePrefix.startsWith("/")) {
-						this.cancelAutocomplete();
-						// Fall through to submit
-					} else {
-						this.cancelAutocomplete();
-						if (this.onChange) this.onChange(this.getText());
-						return;
-					}
-				}
 			}
 		}
 
@@ -1007,25 +1013,28 @@ export class Editor implements Component, Focusable {
 		for (let i = 0; i < this.state.lines.length; i++) {
 			const line = this.state.lines[i] || "";
 			const isCurrentLine = i === this.state.cursorLine;
-			const lineVisibleWidth = visibleWidth(line);
+			const inlineSuffix = isCurrentLine ? this.getInlineSuffix() : undefined;
+			const displayLine = inlineSuffix ? line + inlineSuffix : line;
+			const lineVisibleWidth = visibleWidth(displayLine);
 
 			if (lineVisibleWidth <= contentWidth) {
 				// Line fits in one layout line
 				if (isCurrentLine) {
 					layoutLines.push({
-						text: line,
+						text: displayLine,
 						hasCursor: true,
 						cursorPos: this.state.cursorCol,
+						...(inlineSuffix && { inlineSuffix }),
 					});
 				} else {
 					layoutLines.push({
-						text: line,
+						text: displayLine,
 						hasCursor: false,
 					});
 				}
 			} else {
 				// Line needs wrapping - use word-aware wrapping
-				const chunks = wordWrapLine(line, contentWidth, [...this.segment(line, "grapheme")]);
+				const chunks = wordWrapLine(displayLine, contentWidth, [...this.segment(displayLine, "grapheme")]);
 
 				for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
 					const chunk = chunks[chunkIndex];
@@ -1059,16 +1068,20 @@ export class Editor implements Component, Focusable {
 						}
 					}
 
+					const chunkInlineSuffix =
+						inlineSuffix && chunk.endIndex === displayLine.length ? inlineSuffix : undefined;
 					if (hasCursorInChunk) {
 						layoutLines.push({
 							text: chunk.text,
 							hasCursor: true,
 							cursorPos: adjustedCursorPos,
+							...(chunkInlineSuffix && { inlineSuffix: chunkInlineSuffix }),
 						});
 					} else {
 						layoutLines.push({
 							text: chunk.text,
 							hasCursor: false,
+							...(chunkInlineSuffix && { inlineSuffix: chunkInlineSuffix }),
 						});
 					}
 				}
@@ -1222,8 +1235,8 @@ export class Editor implements Component, Focusable {
 
 		// Check if we should trigger or update autocomplete
 		if (!this.autocompleteState) {
-			// Auto-trigger for "/" at the start of a line (slash commands)
-			if (char === "/" && this.isAtStartOfMessage()) {
+			// Auto-trigger for leading slash commands and non-leading skill references.
+			if ((char === "/" && this.isAtStartOfMessage()) || (char === ":" && this.isInSkillReferenceContext())) {
 				this.tryTriggerAutocomplete();
 			}
 			// Auto-trigger for symbol-based completion like @, #, or provider triggers at token boundaries
@@ -1240,7 +1253,7 @@ export class Editor implements Component, Focusable {
 				const currentLine = this.state.lines[this.state.cursorLine] || "";
 				const textBeforeCursor = currentLine.slice(0, this.state.cursorCol);
 				// Check if we're in a slash command (with or without space for arguments)
-				if (this.isInSlashCommandContext(textBeforeCursor)) {
+				if (this.isInSlashCommandContext(textBeforeCursor) || this.isInSkillReferenceContext(textBeforeCursor)) {
 					this.tryTriggerAutocomplete();
 				}
 				// Check if we're in a symbol-based completion context like @, #, or provider triggers
@@ -2199,6 +2212,11 @@ export class Editor implements Component, Focusable {
 		return this.isSlashMenuAllowed() && textBeforeCursor.trimStart().startsWith("/");
 	}
 
+	private isInSkillReferenceContext(textBeforeCursor?: string): boolean {
+		const text = textBeforeCursor ?? (this.state.lines[this.state.cursorLine] ?? "").slice(0, this.state.cursorCol);
+		return /(?:^|[ \t])\/skill:[^\s]*$/.test(text);
+	}
+
 	// Autocomplete methods
 	/**
 	 * Find the best autocomplete item index for the given prefix.
@@ -2427,6 +2445,15 @@ export class Editor implements Component, Focusable {
 
 	private applyAutocompleteSuggestions(suggestions: AutocompleteSuggestions, state: "regular" | "force"): void {
 		this.autocompletePrefix = suggestions.prefix;
+		this.inlineCompletion = suggestions.inlineCompletion
+			? { item: suggestions.inlineCompletion, prefix: suggestions.prefix }
+			: undefined;
+		if (this.inlineCompletion) {
+			this.autocompleteList = undefined;
+			this.autocompleteState = state;
+			return;
+		}
+
 		this.autocompleteList = this.createAutocompleteList(suggestions.prefix, suggestions.items);
 
 		const bestMatchIndex = this.getBestAutocompleteMatchIndex(suggestions.items, suggestions.prefix);
@@ -2450,6 +2477,7 @@ export class Editor implements Component, Focusable {
 	private clearAutocompleteUi(): void {
 		this.autocompleteState = null;
 		this.autocompleteList = undefined;
+		this.inlineCompletion = undefined;
 		this.autocompletePrefix = "";
 	}
 
@@ -2460,6 +2488,47 @@ export class Editor implements Component, Focusable {
 
 	public isShowingAutocomplete(): boolean {
 		return this.autocompleteState !== null;
+	}
+
+	private getInlineSuffix(): string | undefined {
+		if (!this.inlineCompletion || !this.autocompleteProvider || !this.isInlineCompletionBoundary()) {
+			return undefined;
+		}
+
+		const result = this.autocompleteProvider.applyCompletion(
+			this.state.lines,
+			this.state.cursorLine,
+			this.state.cursorCol,
+			this.inlineCompletion.item!,
+			this.inlineCompletion.prefix,
+		);
+		const currentLine = this.state.lines[this.state.cursorLine] ?? "";
+		const completedLine = result.lines[this.state.cursorLine] ?? currentLine;
+		return completedLine.slice(this.state.cursorCol, result.cursorCol) || undefined;
+	}
+
+	private isInlineCompletionBoundary(): boolean {
+		const currentLine = this.state.lines[this.state.cursorLine] ?? "";
+		return this.state.cursorCol === currentLine.length;
+	}
+
+	private applyInlineCompletion(): void {
+		if (!this.inlineCompletion || !this.autocompleteProvider) return;
+
+		this.pushUndoSnapshot();
+		this.lastAction = null;
+		const result = this.autocompleteProvider.applyCompletion(
+			this.state.lines,
+			this.state.cursorLine,
+			this.state.cursorCol,
+			this.inlineCompletion.item!,
+			this.inlineCompletion.prefix,
+		);
+		this.state.lines = result.lines;
+		this.state.cursorLine = result.cursorLine;
+		this.setCursorCol(result.cursorCol);
+		this.cancelAutocomplete();
+		this.onChange?.(this.getText());
 	}
 
 	private updateAutocomplete(): void {

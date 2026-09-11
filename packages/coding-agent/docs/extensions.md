@@ -2705,6 +2705,7 @@ Typical pattern:
 
 - inspect the text before the cursor
 - return your own suggestions when your extension-specific syntax matches
+- set `inlineCompletion` to one exact-prefix item when it can be accepted without the dropdown
 - otherwise delegate to `current.getSuggestions(...)`
 - delegate `applyCompletion(...)` unless you need custom insertion behavior
 

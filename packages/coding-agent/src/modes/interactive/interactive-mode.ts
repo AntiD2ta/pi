@@ -33,6 +33,7 @@ import {
 	hyperlink,
 	Markdown,
 	matchesKey,
+	SkillReferenceAutocompleteProvider,
 	Spacer,
 	setCapabilityOverrides,
 	setKeybindings,
@@ -745,11 +746,17 @@ export class InteractiveMode {
 			}
 		}
 
-		return new CombinedAutocompleteProvider(
+		const provider = new CombinedAutocompleteProvider(
 			[...slashCommands, ...templateCommands, ...extensionCommands, ...skillCommandList],
 			this.sessionManager.getCwd(),
 			this.fdPath,
 		);
+		const skillReferences = skillCommandList.map((skill) => ({
+			value: `/${skill.name}`,
+			label: skill.name,
+			description: skill.description,
+		}));
+		return new SkillReferenceAutocompleteProvider(provider, skillReferences);
 	}
 
 	private setupAutocompleteProvider(): void {
