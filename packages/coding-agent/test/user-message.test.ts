@@ -1,3 +1,4 @@
+import type { MarkdownCodeFenceChrome } from "@earendil-works/pi-tui";
 import { describe, expect, test } from "vitest";
 import { UserMessageComponent } from "../src/modes/interactive/components/user-message.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
@@ -9,6 +10,27 @@ const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
 const BG_RESET = "\x1b[49m";
 
 describe("UserMessageComponent", () => {
+	test("uses active fence chrome for user Markdown", () => {
+		initTheme("dark");
+		const chrome: MarkdownCodeFenceChrome = {
+			header: ({ language }) => [`[${language}]`],
+			body: (lines) => lines,
+			closing: () => ["</>"],
+		};
+		const component = new UserMessageComponent(
+			"```typescript\nconst value = 1;\n```",
+			undefined,
+			1,
+			[],
+			() => chrome,
+		);
+
+		const rendered = stripAnsi(component.render(80).join("\n"));
+		expect(rendered).toContain("[typescript]");
+		expect(rendered).toContain("const value = 1;");
+		expect(rendered).toContain("</>");
+	});
+
 	test("keeps user message height stable while moving closing OSC markers off line end", () => {
 		initTheme("dark");
 

@@ -246,6 +246,11 @@ const noOpUIContext: ExtensionUIContext = {
 	setWorkingIndicator: () => {},
 	setHiddenThinkingLabel: () => {},
 	setWidget: () => {},
+	setMarkdownCodeFenceChromeOverride: () => ({
+		effectiveOwner: undefined,
+		previousOwner: undefined,
+		conflictedOwner: undefined,
+	}),
 	setFooter: () => {},
 	setFooterOverride: () => ({ effectiveOwner: undefined, previousOwner: undefined, conflictedOwner: undefined }),
 	setHeader: () => {},

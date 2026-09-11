@@ -1,5 +1,13 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { Container, Markdown, type MarkdownTheme, MouseRegion, Spacer, Text } from "@earendil-works/pi-tui";
+import {
+	Container,
+	Markdown,
+	type MarkdownCodeFenceChrome,
+	type MarkdownTheme,
+	MouseRegion,
+	Spacer,
+	Text,
+} from "@earendil-works/pi-tui";
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
@@ -18,6 +26,7 @@ export class AssistantMessageComponent extends Container {
 	private hiddenThinkingLabel: string;
 	private outputPad: number;
 	private markdownTransformers: readonly MarkdownTransformer[];
+	private getCodeFenceChrome: () => MarkdownCodeFenceChrome | undefined;
 	private lastMessage?: AssistantMessage;
 	private hasToolCalls = false;
 	private isStreaming = false;
@@ -30,6 +39,7 @@ export class AssistantMessageComponent extends Container {
 		hiddenThinkingLabel = "Thinking...",
 		outputPad = 1,
 		markdownTransformers: readonly MarkdownTransformer[] = [],
+		getCodeFenceChrome: () => MarkdownCodeFenceChrome | undefined = () => undefined,
 	) {
 		super();
 
@@ -38,6 +48,7 @@ export class AssistantMessageComponent extends Container {
 		this.hiddenThinkingLabel = hiddenThinkingLabel;
 		this.outputPad = outputPad;
 		this.markdownTransformers = markdownTransformers;
+		this.getCodeFenceChrome = getCodeFenceChrome;
 
 		// Container for text/thinking content
 		this.contentContainer = new Container();
@@ -113,6 +124,7 @@ export class AssistantMessageComponent extends Container {
 				this.contentContainer.addChild(
 					new Markdown(content.text.trim(), this.outputPad, 0, this.markdownTheme, undefined, {
 						transform: createMarkdownTransform("assistant", this.isStreaming, this.markdownTransformers),
+						codeFenceChrome: this.getCodeFenceChrome(),
 					}),
 				);
 			} else if (content.type === "thinking") {
@@ -158,6 +170,7 @@ export class AssistantMessageComponent extends Container {
 									this.isStreaming,
 									this.markdownTransformers,
 								),
+								codeFenceChrome: this.getCodeFenceChrome(),
 							},
 						);
 				this.contentContainer.addChild(
