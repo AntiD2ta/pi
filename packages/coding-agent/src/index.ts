@@ -140,6 +140,8 @@ export type {
 	ToolExecutionStartEvent,
 	ToolExecutionUpdateEvent,
 	ToolInfo,
+	ToolRendererFrameContext,
+	ToolRendererFrameState,
 	ToolRendererProfile,
 	ToolRenderers,
 	ToolRenderResultOptions,
