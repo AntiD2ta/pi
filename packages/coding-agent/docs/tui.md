@@ -2,6 +2,12 @@
 
 # TUI Components
 
+## Autocomplete
+
+Autocomplete providers may return `inlineCompletion` when exactly one item extends the typed prefix. The editor renders the remaining suffix dimmed. Tab or Right Arrow accepts it without submitting; Enter submits the typed input.
+
+`SkillReferenceAutocompleteProvider` decorates a provider with literal whitespace-delimited `/skill:` references. Applying one preserves surrounding prompt text and adds no trailing space. Providers may implement `shouldTriggerFileCompletion()` to prevent forced file completion for their syntax.
+
 Extensions and custom tools can render custom TUI components for interactive user interfaces. This page covers the component system and available building blocks.
 
 **Source:** [`@earendil-works/pi-tui`](https://github.com/earendil-works/pi/tree/main/packages/tui)

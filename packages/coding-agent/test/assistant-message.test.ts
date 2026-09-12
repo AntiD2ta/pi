@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import type { TuiMouseEvent } from "@earendil-works/pi-tui";
+import type { MarkdownCodeFenceChrome, TuiMouseEvent } from "@earendil-works/pi-tui";
 import { describe, expect, test } from "vitest";
 import { AssistantMessageComponent } from "../src/modes/interactive/components/assistant-message.ts";
 import { UserMessageComponent } from "../src/modes/interactive/components/user-message.ts";
@@ -34,6 +34,29 @@ function createAssistantMessage(
 }
 
 describe("AssistantMessageComponent", () => {
+	test("uses active fence chrome for assistant Markdown", () => {
+		initTheme("dark");
+		const chrome: MarkdownCodeFenceChrome = {
+			header: ({ language }) => [`[${language}]`],
+			body: (lines) => lines,
+			closing: () => ["</>"],
+		};
+		const component = new AssistantMessageComponent(
+			createAssistantMessage([{ type: "text", text: "```typescript\nconst value = 1;\n```" }]),
+			false,
+			undefined,
+			"Thinking...",
+			1,
+			[],
+			() => chrome,
+		);
+
+		const rendered = stripAnsi(component.render(80).join("\n"));
+		expect(rendered).toContain("[typescript]");
+		expect(rendered).toContain("const value = 1;");
+		expect(rendered).toContain("</>");
+	});
+
 	test("adds OSC 133 zone markers to assistant messages without tool calls", () => {
 		initTheme("dark");
 

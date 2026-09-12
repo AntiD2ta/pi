@@ -668,9 +668,16 @@ editor.setAutocompleteProvider(provider);
 
 **Features:**
 - Type `/` to see slash commands
+- A single prefix match appears as a dim inline suffix. Tab or Right Arrow accepts it.
 - Press `Tab` for file path completion
 - Works with `~/`, `./`, `../`, and `@` prefix
 - Filters to attachable files for `@` prefix
+
+### Inline completion providers
+
+Providers return `inlineCompletion` with one unambiguous `AutocompleteItem`. The editor renders the remainder after the cursor as a dim suffix and accepts it with Tab or Right Arrow.
+
+`SkillReferenceAutocompleteProvider` decorates another provider with literal, whitespace-delimited `/skill:` references. It preserves surrounding prompt text and does not add a trailing space when applying a skill completion.
 
 ## Key Detection
 

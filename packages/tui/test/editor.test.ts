@@ -1,7 +1,11 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import { stripVTControlCharacters } from "node:util";
-import { type AutocompleteProvider, CombinedAutocompleteProvider } from "../src/autocomplete.ts";
+import {
+	type AutocompleteProvider,
+	CombinedAutocompleteProvider,
+	SkillReferenceAutocompleteProvider,
+} from "../src/autocomplete.ts";
 import { Editor, wordWrapLine } from "../src/components/editor.ts";
 import type { TUI } from "../src/tui.ts";
 import { TuiMainScreen } from "../src/tui-main-screen.ts";
@@ -2129,6 +2133,84 @@ describe("Editor component", () => {
 	});
 
 	describe("Autocomplete", () => {
+		it("renders and accepts an inline completion without submitting", async () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			const submitted: string[] = [];
+			editor.onSubmit = (text) => submitted.push(text);
+			editor.setAutocompleteProvider({
+				getSuggestions: async (lines, _cursorLine, cursorCol) => {
+					const prefix = (lines[0] ?? "").slice(0, cursorCol);
+					return prefix === "/rev"
+						? {
+								items: [{ value: "/review", label: "review" }],
+								prefix,
+								inlineCompletion: { value: "/review", label: "review" },
+							}
+						: null;
+				},
+				applyCompletion,
+			});
+
+			for (const char of "/rev") editor.handleInput(char);
+			await flushAutocomplete();
+			const rendered = editor.render(40).join("\n");
+			assert.match(stripVTControlCharacters(rendered), /\/review/);
+			assert.match(rendered, /\x1b\[2mew\x1b\[22m/);
+
+			editor.handleInput("\t");
+			assert.strictEqual(editor.getText(), "/review");
+			assert.deepStrictEqual(submitted, []);
+
+			editor.handleInput("\r");
+			assert.deepStrictEqual(submitted, ["/review"]);
+		});
+
+		it("accepts a non-leading skill reference with Tab without adding a space", async () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			const base: AutocompleteProvider = {
+				getSuggestions: async () => null,
+				applyCompletion,
+			};
+			editor.setAutocompleteProvider(
+				new SkillReferenceAutocompleteProvider(base, [
+					{ value: "/skill:review-local", label: "skill:review-local" },
+				]),
+			);
+
+			for (const char of "Use /skill:rev") editor.handleInput(char);
+			await flushAutocomplete();
+			editor.handleInput("\t");
+			assert.strictEqual(editor.getText(), "Use /skill:review-local");
+		});
+
+		it("accepts an inline completion with Right Arrow only at its boundary", async () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			editor.setAutocompleteProvider({
+				getSuggestions: async (lines, _cursorLine, cursorCol) => {
+					const prefix = (lines[0] ?? "").slice(0, cursorCol);
+					return prefix === "/rev"
+						? {
+								items: [{ value: "/review", label: "review" }],
+								prefix,
+								inlineCompletion: { value: "/review", label: "review" },
+							}
+						: null;
+				},
+				applyCompletion,
+			});
+
+			for (const char of "/rev") editor.handleInput(char);
+			await flushAutocomplete();
+			editor.handleInput("\x1b[C");
+			assert.strictEqual(editor.getText(), "/review");
+
+			editor.setText("/revx");
+			editor.handleInput("\x1b[D");
+			editor.handleInput("\x1b[C");
+			assert.strictEqual(editor.getText(), "/revx");
+			assert.deepStrictEqual(editor.getCursor(), { line: 0, col: 5 });
+		});
+
 		it("auto-applies single force-file suggestion without showing menu", async () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
 
@@ -2522,6 +2604,10 @@ describe("Editor component", () => {
 
 		it("applies exact typed slash-argument value on Enter even when first item is highlighted", async () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			let submitted = "";
+			editor.onSubmit = (text) => {
+				submitted = text;
+			};
 
 			// Mock provider for /argtest command with argument completions
 			const mockProvider: AutocompleteProvider = {
@@ -2573,11 +2659,15 @@ describe("Editor component", () => {
 			editor.handleInput("\r");
 
 			// The exact typed value "two" should be retained
-			assert.strictEqual(editor.getText(), "/argtest two");
+			assert.strictEqual(submitted, "/argtest two");
 		});
 
 		it("selects first prefix match on Enter when typed arg is not exact match", async () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			let submitted = "";
+			editor.onSubmit = (text) => {
+				submitted = text;
+			};
 
 			// Mock provider for /argtest command with argument completions
 			const mockProvider: AutocompleteProvider = {
@@ -2624,11 +2714,15 @@ describe("Editor component", () => {
 
 			// Press Enter - "t" prefix matches "two" (first in list), so "two" is applied
 			editor.handleInput("\r");
-			assert.strictEqual(editor.getText(), "/argtest two");
+			assert.strictEqual(submitted, "/argtest t");
 		});
 
 		it("highlights unique prefix match as user types (before full exact match)", async () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			let submitted = "";
+			editor.onSubmit = (text) => {
+				submitted = text;
+			};
 
 			// Mock provider that returns all items unfiltered (like real extensions do)
 			const mockProvider: AutocompleteProvider = {
@@ -2673,11 +2767,15 @@ describe("Editor component", () => {
 
 			// Press Enter - "tw" uniquely matches "two", so "two" should be applied
 			editor.handleInput("\r");
-			assert.strictEqual(editor.getText(), "/argtest two");
+			assert.strictEqual(submitted, "/argtest tw");
 		});
 
 		it("selects first prefix match when multiple items match", async () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			let submitted = "";
+			editor.onSubmit = (text) => {
+				submitted = text;
+			};
 
 			// Mock provider that returns all items unfiltered
 			const mockProvider: AutocompleteProvider = {
@@ -2719,11 +2817,15 @@ describe("Editor component", () => {
 
 			// Press Enter - "t" matches "two" first, so "two" is selected
 			editor.handleInput("\r");
-			assert.strictEqual(editor.getText(), "/argtest two");
+			assert.strictEqual(submitted, "/argtest t");
 		});
 
 		it("works for built-in-style command argument completion path (model-like)", async () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			let submitted = "";
+			editor.onSubmit = (text) => {
+				submitted = text;
+			};
 
 			// Mock provider for /model command with model completions
 			const mockProvider: AutocompleteProvider = {
@@ -2782,7 +2884,7 @@ describe("Editor component", () => {
 			editor.handleInput("\r");
 
 			// The exact typed value should be retained
-			assert.strictEqual(editor.getText(), "/model gpt-4o-mini");
+			assert.strictEqual(submitted, "/model gpt-4o-mini");
 		});
 
 		it("awaits async slash command argument completions", async () => {

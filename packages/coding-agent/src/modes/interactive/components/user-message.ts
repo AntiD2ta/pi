@@ -1,4 +1,4 @@
-import { Box, Container, Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
+import { Box, Container, Markdown, type MarkdownCodeFenceChrome, type MarkdownTheme } from "@earendil-works/pi-tui";
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
@@ -15,23 +15,31 @@ export class UserMessageComponent extends Container {
 	private markdownTheme: MarkdownTheme;
 	private outputPad: number;
 	private markdownTransformers: readonly MarkdownTransformer[];
+	private getCodeFenceChrome: () => MarkdownCodeFenceChrome | undefined;
 
 	constructor(
 		text: string,
 		markdownTheme: MarkdownTheme = getMarkdownTheme(),
 		outputPad = 1,
 		markdownTransformers: readonly MarkdownTransformer[] = [],
+		getCodeFenceChrome: () => MarkdownCodeFenceChrome | undefined = () => undefined,
 	) {
 		super();
 		this.text = text;
 		this.markdownTheme = markdownTheme;
 		this.outputPad = outputPad;
 		this.markdownTransformers = markdownTransformers;
+		this.getCodeFenceChrome = getCodeFenceChrome;
 		this.rebuild();
 	}
 
 	setOutputPad(padding: number): void {
 		this.outputPad = padding;
+		this.rebuild();
+	}
+
+	override invalidate(): void {
+		super.invalidate();
 		this.rebuild();
 	}
 
@@ -51,6 +59,7 @@ export class UserMessageComponent extends Container {
 					preserveOrderedListMarkers: true,
 					preserveBackslashEscapes: true,
 					transform: createMarkdownTransform("user", false, this.markdownTransformers),
+					codeFenceChrome: this.getCodeFenceChrome(),
 				},
 			),
 		);
