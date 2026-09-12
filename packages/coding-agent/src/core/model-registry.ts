@@ -2,6 +2,7 @@ import type {
 	Api,
 	AssistantMessage,
 	AssistantMessageEventStream,
+	AuthOperationOptions,
 	AuthResult,
 	Context,
 	Model,
@@ -11,6 +12,7 @@ import type {
 	ModelsSimpleStreamOptions,
 	Provider,
 	ProviderHeaders,
+	UsageReport,
 } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "./model-runtime.ts";
 import type { AuthStatus, ProviderConfigInput } from "./provider-composer.ts";
@@ -96,6 +98,11 @@ export class ModelRegistry {
 
 	getProviderAuthStatus(provider: string): AuthStatus {
 		return this.runtime.getProviderAuthStatus(provider);
+	}
+
+	/** Finite subscription usage for a provider, without exposing its credentials. */
+	getUsageReport(provider: string, options?: AuthOperationOptions): Promise<UsageReport | undefined> {
+		return this.runtime.getUsageReport(provider, options);
 	}
 
 	getProvider(provider: string): Provider | undefined {

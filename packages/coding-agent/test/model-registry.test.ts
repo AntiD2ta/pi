@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { UsageReport } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, createProvider } from "@earendil-works/pi-ai";
 import type {
 	AnthropicMessagesCompat,
 	Api,
@@ -2007,6 +2009,46 @@ describe("ModelRegistry", () => {
 					expect(auth.error).toContain('Failed to resolve API key for provider "custom-provider"');
 				}
 			});
+		});
+	});
+
+	describe("subscription usage reports", () => {
+		function usageProvider(report: UsageReport) {
+			return createProvider({
+				id: "usage-provider",
+				auth: {
+					oauth: {
+						name: "Usage Provider",
+						login: async () => {
+							throw new Error("must not log in");
+						},
+						refresh: async (credential) => credential,
+						toAuth: async (credential) => ({ apiKey: credential.access }),
+					},
+				},
+				models: [],
+				fetchUsageReport: async () => report,
+				api: {
+					stream: () => createAssistantMessageEventStream(),
+					streamSimple: () => createAssistantMessageEventStream(),
+				},
+			});
+		}
+
+		test("getUsageReport returns the provider's normalized windows", async () => {
+			const report: UsageReport = {
+				windows: [{ duration: 5 * 60 * 60_000, used: 0.25, observedAt: 1_000, resetsAt: 2_000 }],
+			};
+			const registry = await createModelRegistry(authStorage, modelsJsonPath);
+			registry.registerProvider(usageProvider(report));
+			await authStorage.modify("usage-provider", async () => ({
+				type: "oauth",
+				access: "access-token",
+				refresh: "refresh-token",
+				expires: Date.now() + 60_000,
+			}));
+
+			await expect(registry.getUsageReport("usage-provider")).resolves.toEqual(report);
 		});
 	});
 });
