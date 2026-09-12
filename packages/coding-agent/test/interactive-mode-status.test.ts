@@ -181,6 +181,7 @@ describe("InteractiveMode.createExtensionUIContext setTheme", () => {
 		const fakeThis: any = {
 			session: { settingsManager },
 			settingsManager,
+			themeOverrides: { clear: vi.fn() },
 			themeController: {
 				setThemeInstance: vi.fn(() => ({ success: true })),
 				setThemeName: vi.fn(() => {
@@ -189,6 +190,8 @@ describe("InteractiveMode.createExtensionUIContext setTheme", () => {
 				}),
 			},
 			ui: { requestRender: vi.fn() },
+			setUserTheme: (themeOrName: string) =>
+				(InteractiveMode as any).prototype.setUserTheme.call(fakeThis, themeOrName),
 		};
 
 		const uiContext = (InteractiveMode as any).prototype.createExtensionUIContext.call(fakeThis);
@@ -211,11 +214,14 @@ describe("InteractiveMode.createExtensionUIContext setTheme", () => {
 		const fakeThis: any = {
 			session: { settingsManager },
 			settingsManager,
+			themeOverrides: { clear: vi.fn() },
 			themeController: {
 				setThemeInstance: vi.fn(() => ({ success: true })),
 				setThemeName: vi.fn(() => ({ success: false, error: "Theme not found" })),
 			},
 			ui: { requestRender: vi.fn() },
+			setUserTheme: (themeOrName: string) =>
+				(InteractiveMode as any).prototype.setUserTheme.call(fakeThis, themeOrName),
 		};
 
 		const uiContext = (InteractiveMode as any).prototype.createExtensionUIContext.call(fakeThis);
