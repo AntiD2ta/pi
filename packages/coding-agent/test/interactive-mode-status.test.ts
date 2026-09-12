@@ -452,6 +452,54 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 		]);
 	});
 
+	test("adds skill references only when skill commands are enabled", async () => {
+		type FakeInteractiveMode = {
+			session: {
+				scopedModels: [];
+				modelRuntime: { getAvailableSnapshot: () => [] };
+				promptTemplates: [];
+				extensionRunner: { getRegisteredCommands: () => [] };
+				resourceLoader: { getSkills: () => { skills: Array<{ name: string; description: string }> } };
+			};
+			settingsManager: { getEnableSkillCommands: () => boolean };
+			skillCommands: Map<string, string>;
+			sessionManager: { getCwd: () => string };
+			fdPath: null;
+			prefixAutocompleteDescription: (description: string) => string;
+		};
+		const createBaseAutocompleteProvider = (
+			InteractiveMode as unknown as {
+				prototype: { createBaseAutocompleteProvider(this: FakeInteractiveMode): AutocompleteProvider };
+			}
+		).prototype.createBaseAutocompleteProvider;
+		const createFakeThis = (enabled: boolean): FakeInteractiveMode => ({
+			session: {
+				scopedModels: [],
+				modelRuntime: { getAvailableSnapshot: () => [] },
+				promptTemplates: [],
+				extensionRunner: { getRegisteredCommands: () => [] },
+				resourceLoader: { getSkills: () => ({ skills: [{ name: "review", description: "Review changes" }] }) },
+			},
+			settingsManager: { getEnableSkillCommands: () => enabled },
+			skillCommands: new Map(),
+			sessionManager: { getCwd: () => "/tmp" },
+			fdPath: null,
+			prefixAutocompleteDescription: (description) => description,
+		});
+
+		const enabled = createFakeThis(true);
+		const provider = createBaseAutocompleteProvider.call(enabled);
+		const suggestions = await provider.getSuggestions(["Use /skill:rev"], 0, 14, {
+			signal: new AbortController().signal,
+		});
+		expect(suggestions?.items.map((item) => item.value)).toEqual(["/skill:review"]);
+		expect(enabled.skillCommands).toEqual(new Map([["skill:review", undefined]]));
+
+		const disabled = createFakeThis(false);
+		createBaseAutocompleteProvider.call(disabled);
+		expect(disabled.skillCommands).toEqual(new Map());
+	});
+
 	test("matches login command arguments by provider id and name", async () => {
 		type FakeInteractiveMode = {
 			session: {
