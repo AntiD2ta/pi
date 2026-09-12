@@ -631,5 +631,14 @@ describe("CombinedAutocompleteProvider", () => {
 			);
 			assert.strictEqual(completion.lines[0], "Please use /skill:review-local");
 		});
+
+		it("completes a skill reference after leading whitespace", async () => {
+			const provider = new SkillReferenceAutocompleteProvider(new CombinedAutocompleteProvider([], "/tmp"), [
+				{ value: "/skill:review-local", label: "skill:review-local" },
+			]);
+			const line = " /skill:rev";
+			const suggestions = await getSuggestions(provider, [line], 0, line.length);
+			assert.strictEqual(suggestions?.inlineCompletion?.value, "/skill:review-local");
+		});
 	});
 });
