@@ -1,7 +1,11 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import { stripVTControlCharacters } from "node:util";
-import { type AutocompleteProvider, CombinedAutocompleteProvider } from "../src/autocomplete.ts";
+import {
+	type AutocompleteProvider,
+	CombinedAutocompleteProvider,
+	SkillReferenceAutocompleteProvider,
+} from "../src/autocomplete.ts";
 import { Editor, wordWrapLine } from "../src/components/editor.ts";
 import type { TUI } from "../src/tui.ts";
 import { TuiMainScreen } from "../src/tui-main-screen.ts";
@@ -2159,6 +2163,24 @@ describe("Editor component", () => {
 
 			editor.handleInput("\r");
 			assert.deepStrictEqual(submitted, ["/review"]);
+		});
+
+		it("accepts a non-leading skill reference with Tab without adding a space", async () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			const base: AutocompleteProvider = {
+				getSuggestions: async () => null,
+				applyCompletion,
+			};
+			editor.setAutocompleteProvider(
+				new SkillReferenceAutocompleteProvider(base, [
+					{ value: "/skill:review-local", label: "skill:review-local" },
+				]),
+			);
+
+			for (const char of "Use /skill:rev") editor.handleInput(char);
+			await flushAutocomplete();
+			editor.handleInput("\t");
+			assert.strictEqual(editor.getText(), "Use /skill:review-local");
 		});
 
 		it("accepts an inline completion with Right Arrow only at its boundary", async () => {

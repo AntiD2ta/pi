@@ -852,11 +852,10 @@ export class SkillReferenceAutocompleteProvider implements AutocompleteProvider 
 	): Promise<AutocompleteSuggestions | null> {
 		const textBeforeCursor = (lines[cursorLine] ?? "").slice(0, cursorCol);
 		const match = textBeforeCursor.match(/(?:^|[ \t])(\/skill:[^\s]*)$/);
-		if (!match || match.index === 0) {
+		const prefix = match?.[1];
+		if (!prefix || textBeforeCursor.length === prefix.length) {
 			return this.current.getSuggestions(lines, cursorLine, cursorCol, options);
 		}
-
-		const prefix = match[1]!;
 		const items = fuzzyFilter(this.skills, prefix, (item) => item.value);
 		if (items.length === 0) return null;
 		const prefixMatches = items.filter((item) => item.value.startsWith(prefix));
