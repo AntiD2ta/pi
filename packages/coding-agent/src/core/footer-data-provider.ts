@@ -98,7 +98,7 @@ function shouldPollGitHead(repoDir: string): boolean {
  */
 export class FooterDataProvider {
 	private cwd: string;
-	private static readonly WATCH_DEBOUNCE_MS = 500;
+	private static readonly WATCH_DEBOUNCE_MS = 150;
 
 	private extensionStatuses = new Map<string, string>();
 	private cachedBranch: string | null | undefined = undefined;
@@ -107,7 +107,6 @@ export class FooterDataProvider {
 	private headWatchFilePath: string | null = null;
 	private headWatchFileListener: ((current: Stats, previous: Stats) => void) | null = null;
 	private reftableWatcher: FSWatcher | null = null;
-	private reftableTablesListWatcher: FSWatcher | null = null;
 	private reftableTablesListPath: string | null = null;
 	private branchChangeCallbacks = new Set<() => void>();
 	private availableProviderCount = 0;
@@ -276,8 +275,6 @@ export class FooterDataProvider {
 		}
 		closeWatcher(this.reftableWatcher);
 		this.reftableWatcher = null;
-		closeWatcher(this.reftableTablesListWatcher);
-		this.reftableTablesListWatcher = null;
 		if (this.reftableTablesListPath) {
 			unwatchFile(this.reftableTablesListPath);
 			this.reftableTablesListPath = null;
@@ -357,17 +354,7 @@ export class FooterDataProvider {
 			const tablesListPath = join(reftableDir, "tables.list");
 			if (existsSync(tablesListPath)) {
 				this.reftableTablesListPath = tablesListPath;
-				this.reftableTablesListWatcher = watchWithErrorHandler(
-					tablesListPath,
-					() => {
-						this.scheduleRefresh();
-					},
-					() => this.handleGitWatcherError(),
-				);
-				if (!this.reftableTablesListWatcher) {
-					return;
-				}
-				watchFile(tablesListPath, { interval: 250 }, (current, previous) => {
+				watchFile(tablesListPath, { interval: 500 }, (current, previous) => {
 					if (
 						current.mtimeMs !== previous.mtimeMs ||
 						current.ctimeMs !== previous.ctimeMs ||
@@ -377,6 +364,9 @@ export class FooterDataProvider {
 					}
 				});
 			}
+
+			// Close the gap before native watchers and polling have started observing changes.
+			this.scheduleRefresh();
 		}
 	}
 }
