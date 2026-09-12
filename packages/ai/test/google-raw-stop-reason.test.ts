@@ -63,6 +63,7 @@ vi.mock("@google/genai", () => {
 			LANGUAGE: "LANGUAGE",
 			MALFORMED_FUNCTION_CALL: "MALFORMED_FUNCTION_CALL",
 			UNEXPECTED_TOOL_CALL: "UNEXPECTED_TOOL_CALL",
+			TOO_MANY_TOOL_CALLS: "TOO_MANY_TOOL_CALLS",
 			NO_IMAGE: "NO_IMAGE",
 		},
 		FunctionCallingConfigMode: {
@@ -124,6 +125,21 @@ describe("Google raw stop reasons", () => {
 		expect(message.stopReason).toBe("error");
 		expect(message.rawStopReason).toBe("MALFORMED_FUNCTION_CALL");
 		expect(message.errorMessage).toBe("Provider stopped with: MALFORMED_FUNCTION_CALL");
+	});
+
+	it("preserves Google tool-loop limits as errors", async () => {
+		googleGenAiMock.finishReason = "TOO_MANY_TOOL_CALLS";
+		googleGenAiMock.includeFunctionCall = false;
+
+		const stream = streamGoogleGenerativeAi(getModel("google", "gemini-2.5-flash"), context, {
+			apiKey: "test-api-key",
+		});
+
+		const message = await stream.result();
+
+		expect(message.stopReason).toBe("error");
+		expect(message.rawStopReason).toBe("TOO_MANY_TOOL_CALLS");
+		expect(message.errorMessage).toBe("Provider stopped with: TOO_MANY_TOOL_CALLS");
 	});
 
 	it("preserves raw Gemini finish reasons for Google Vertex errors", async () => {
