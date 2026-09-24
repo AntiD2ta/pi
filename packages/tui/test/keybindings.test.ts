@@ -14,10 +14,25 @@ describe("KeybindingsManager", () => {
 	it("binds modified and unmodified editor viewport navigation", () => {
 		const keybindings = new KeybindingsManager(TUI_KEYBINDINGS);
 
-		assert.deepStrictEqual(keybindings.getKeys("tui.editor.cursorLineStart"), ["home", "ctrl+home", "ctrl+a"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.cursorLineStart"), ["home", "ctrl+home"]);
 		assert.deepStrictEqual(keybindings.getKeys("tui.editor.cursorLineEnd"), ["end", "ctrl+end", "ctrl+e"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectAll"), ["ctrl+a"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectLeft"), ["shift+left"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectRight"), ["shift+right"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectUp"), ["shift+up"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectDown"), ["shift+down"]);
 		assert.deepStrictEqual(keybindings.getKeys("tui.editor.pageUp"), ["pageUp", "ctrl+pageUp"]);
 		assert.deepStrictEqual(keybindings.getKeys("tui.editor.pageDown"), ["pageDown", "ctrl+pageDown"]);
+	});
+
+	it("allows overriding the keyboard selection tracer bindings", () => {
+		const keybindings = new KeybindingsManager(TUI_KEYBINDINGS, {
+			"tui.editor.selectLeft": "alt+shift+left",
+			"tui.editor.selectAll": "ctrl+shift+a",
+		});
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectLeft"), ["alt+shift+left"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectAll"), ["ctrl+shift+a"]);
+		assert.strictEqual(keybindings.matches("\x01", "tui.editor.selectAll"), false);
 	});
 
 	it("leaves dedicated prompt history navigation unbound by default", () => {

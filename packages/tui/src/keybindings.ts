@@ -12,6 +12,11 @@ export interface Keybindings {
 	"tui.editor.historyNext": true;
 	"tui.editor.cursorLeft": true;
 	"tui.editor.cursorRight": true;
+	"tui.editor.selectLeft": true;
+	"tui.editor.selectRight": true;
+	"tui.editor.selectUp": true;
+	"tui.editor.selectDown": true;
+	"tui.editor.selectAll": true;
 	"tui.editor.cursorWordLeft": true;
 	"tui.editor.cursorWordRight": true;
 	"tui.editor.cursorLineStart": true;
@@ -96,9 +101,14 @@ export const TUI_KEYBINDINGS = {
 		description: "Move cursor word right",
 	},
 	"tui.editor.cursorLineStart": {
-		defaultKeys: ["home", "ctrl+home", "ctrl+a"],
+		defaultKeys: ["home", "ctrl+home"],
 		description: "Move to line start",
 	},
+	"tui.editor.selectLeft": { defaultKeys: "shift+left", description: "Select left" },
+	"tui.editor.selectRight": { defaultKeys: "shift+right", description: "Select right" },
+	"tui.editor.selectUp": { defaultKeys: "shift+up", description: "Select up" },
+	"tui.editor.selectDown": { defaultKeys: "shift+down", description: "Select down" },
+	"tui.editor.selectAll": { defaultKeys: "ctrl+a", description: "Select all editor text" },
 	"tui.editor.cursorLineEnd": {
 		defaultKeys: ["end", "ctrl+end", "ctrl+e"],
 		description: "Move to line end",
@@ -114,11 +124,11 @@ export const TUI_KEYBINDINGS = {
 	"tui.editor.pageUp": { defaultKeys: ["pageUp", "ctrl+pageUp"], description: "Page up" },
 	"tui.editor.pageDown": { defaultKeys: ["pageDown", "ctrl+pageDown"], description: "Page down" },
 	"tui.editor.deleteCharBackward": {
-		defaultKeys: "backspace",
+		defaultKeys: ["backspace", "shift+backspace"],
 		description: "Delete character backward",
 	},
 	"tui.editor.deleteCharForward": {
-		defaultKeys: ["delete", "ctrl+d"],
+		defaultKeys: ["delete", "ctrl+d", "shift+delete"],
 		description: "Delete character forward",
 	},
 	"tui.editor.deleteWordBackward": {
