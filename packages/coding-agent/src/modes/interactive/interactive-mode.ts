@@ -430,6 +430,7 @@ export class InteractiveMode {
 	private statusContainer: Container;
 	private defaultEditor: CustomEditor;
 	private editor: EditorComponent;
+	private imageMarkersEnabled = false;
 	private editorComponentFactory: EditorFactory | undefined;
 	private autocompleteProvider: AutocompleteProvider | undefined;
 	private autocompleteProviderWrappers: AutocompleteProviderFactory[] = [];
@@ -604,6 +605,8 @@ export class InteractiveMode {
 			terminal: options.terminal,
 			onRightClickPaste: this.onRightClickPaste,
 			fullscreenCopyOnSelect: this.settingsManager.getFullscreenCopyOnSelect(),
+			transformCopiedText: (text) =>
+				this.imageMarkersEnabled ? (this.editor.expandImageMarkers?.(text) ?? text) : text,
 		});
 		this.ui = createInteractiveTuiReference(() => this.renderer);
 		this.ui.setClearOnShrink(this.settingsManager.getClearOnShrink());
@@ -896,6 +899,8 @@ export class InteractiveMode {
 			terminal,
 			onRightClickPaste: this.onRightClickPaste,
 			fullscreenCopyOnSelect: this.settingsManager.getFullscreenCopyOnSelect(),
+			transformCopiedText: (text) =>
+				this.imageMarkersEnabled ? (this.editor.expandImageMarkers?.(text) ?? text) : text,
 		});
 		nextUi.setClearOnShrink(clearOnShrink);
 		nextUi.onDebug = onDebug;
@@ -2448,6 +2453,7 @@ export class InteractiveMode {
 		this.footerDataProvider.clearExtensionStatuses();
 		this.footer.invalidate();
 		this.autocompleteProviderWrappers = [];
+		this.imageMarkersEnabled = false;
 		this.editorOverrides.clear();
 		this.codeFenceChromeOverrides.clear();
 		this.editorBaseFactory = undefined;
@@ -2721,6 +2727,9 @@ export class InteractiveMode {
 			setTitle: (title) => this.ui.terminal.setTitle(title),
 			custom: (factory, options) => this.showExtensionCustom(factory, options),
 			pasteToEditor: (text) => this.editor.handleInput(`\x1b[200~${text}\x1b[201~`),
+			setImageMarkersEnabled: (enabled) => {
+				this.imageMarkersEnabled = enabled;
+			},
 			setEditorText: (text) => this.editor.setText(text),
 			getEditorText: () => this.editor.getExpandedText?.() ?? this.editor.getText(),
 			editor: (title, prefill) => this.showExtensionEditor(title, prefill),
@@ -3300,7 +3309,8 @@ export class InteractiveMode {
 				const filePath = path.join(tmpDir, fileName);
 				fs.writeFileSync(filePath, Buffer.from(image.bytes));
 
-				this.editor.insertTextAtCursor?.(filePath);
+				if (this.imageMarkersEnabled && this.editor.insertImageMarker) this.editor.insertImageMarker(filePath);
+				else this.editor.insertTextAtCursor?.(filePath);
 				this.ui.requestRender();
 				return;
 			}

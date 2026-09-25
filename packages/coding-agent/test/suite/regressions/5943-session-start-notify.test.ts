@@ -34,6 +34,7 @@ function createUiContext(
 		setTitle: () => {},
 		custom: async <T>() => undefined as T,
 		pasteToEditor: () => {},
+		setImageMarkersEnabled: () => {},
 		setEditorText: () => {},
 		getEditorText: () => "",
 		editor: async () => undefined,

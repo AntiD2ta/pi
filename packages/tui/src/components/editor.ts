@@ -32,34 +32,31 @@ const PASTE_MARKER_REGEX = /\[paste #(\d+)( (\+\d+ lines|\d+ chars))?\]/g;
 
 /** Non-global version for single-segment testing. */
 const PASTE_MARKER_SINGLE = /^\[paste #(\d+)( (\+\d+ lines|\d+ chars))?\]$/;
+const IMAGE_MARKER_REGEX = /\[Image (\d+)\]/g;
+const MARKER_REGEX = /\[paste #(\d+)( (\+\d+ lines|\d+ chars))?\]|\[Image (\d+)\]/g;
 
-/** Check if a segment is a paste marker (i.e. was merged by segmentWithMarkers). */
-function isPasteMarker(segment: string): boolean {
-	return segment.length >= 10 && PASTE_MARKER_SINGLE.test(segment);
+function isAtomicMarker(segment: string): boolean {
+	return PASTE_MARKER_SINGLE.test(segment) || /^\[Image \d+\]$/.test(segment);
 }
 
 /**
  * A segmenter that wraps Intl.Segmenter and merges graphemes that fall
- * within paste markers into single atomic segments.  This makes cursor
+ * within registered paste and image markers into single atomic segments.  This makes cursor
  * movement, deletion, word-wrap, etc. treat paste markers as single units.
  *
- * Only markers whose numeric ID exists in `validIds` are merged.
+ * Only markers registered for the current draft are merged.
  */
 function segmentWithMarkers(
 	text: string,
 	baseSegmenter: Intl.Segmenter,
-	validIds: Set<number>,
+	validPasteIds: Set<number>,
+	validImageIds: Set<number>,
 ): Iterable<Intl.SegmentData> {
-	// Fast path: no paste markers in the text or no valid IDs.
-	if (validIds.size === 0 || !text.includes("[paste #")) {
-		return baseSegmenter.segment(text);
-	}
+	if (validPasteIds.size === 0 && validImageIds.size === 0) return baseSegmenter.segment(text);
 
-	// Find all marker spans with valid IDs.
 	const markers: Array<{ start: number; end: number }> = [];
-	for (const m of text.matchAll(PASTE_MARKER_REGEX)) {
-		const id = Number.parseInt(m[1]!, 10);
-		if (!validIds.has(id)) continue;
+	for (const m of text.matchAll(MARKER_REGEX)) {
+		if (!(m[1] ? validPasteIds.has(Number(m[1])) : validImageIds.has(Number(m[4])))) continue;
 		markers.push({ start: m.index, end: m.index + m[0].length });
 	}
 	if (markers.length === 0) {
@@ -146,7 +143,7 @@ export function wordWrapLine(line: string, maxWidth: number, preSegmented?: Intl
 		const grapheme = seg.segment;
 		const gWidth = visibleWidth(grapheme);
 		const charIndex = seg.index;
-		const isWs = !isPasteMarker(grapheme) && isWhitespaceChar(grapheme);
+		const isWs = !isAtomicMarker(grapheme) && isWhitespaceChar(grapheme);
 
 		// Overflow check before advancing.
 		if (currentWidth + gWidth > maxWidth) {
@@ -195,12 +192,12 @@ export function wordWrapLine(line: string, maxWidth: number, preSegmented?: Intl
 		// or at a boundary where either side is CJK (CJK allows breaking
 		// between any adjacent characters).
 		const next = segments[i + 1];
-		if (isWs && next && (isPasteMarker(next.segment) || !isWhitespaceChar(next.segment))) {
+		if (isWs && next && (isAtomicMarker(next.segment) || !isWhitespaceChar(next.segment))) {
 			wrapOppIndex = next.index;
 			wrapOppWidth = currentWidth;
 		} else if (!isWs && next && !isWhitespaceChar(next.segment)) {
-			const isCjk = !isPasteMarker(grapheme) && cjkBreakRegex.test(grapheme);
-			const nextIsCjk = !isPasteMarker(next.segment) && cjkBreakRegex.test(next.segment);
+			const isCjk = !isAtomicMarker(grapheme) && cjkBreakRegex.test(grapheme);
+			const nextIsCjk = !isAtomicMarker(next.segment) && cjkBreakRegex.test(next.segment);
 			if (isCjk || nextIsCjk) {
 				wrapOppIndex = next.index;
 				wrapOppWidth = currentWidth;
@@ -231,6 +228,8 @@ interface EditorSnapshot {
 	state: EditorState;
 	pastes: Map<number, string>;
 	pasteCounter: number;
+	images: Map<number, string>;
+	imageCounter: number;
 }
 
 interface LayoutLine {
@@ -349,6 +348,8 @@ export class Editor implements Component, Focusable {
 	// Paste tracking for large pastes
 	private pastes: Map<number, string> = new Map();
 	private pasteCounter: number = 0;
+	private images: Map<number, string> = new Map();
+	private imageCounter = 0;
 
 	// Bracketed paste mode buffering
 	private pasteBuffer: string = "";
@@ -393,14 +394,13 @@ export class Editor implements Component, Focusable {
 		this.autocompleteMaxVisible = Number.isFinite(maxVisible) ? Math.max(3, Math.min(20, Math.floor(maxVisible))) : 5;
 	}
 
-	/** Set of currently valid paste IDs, for marker-aware segmentation. */
-	private validPasteIds(): Set<number> {
-		return new Set(this.pastes.keys());
-	}
-
-	/** Segment text with paste-marker awareness, only merging markers with valid IDs. */
 	private segment(text: string, mode: "word" | "grapheme"): Iterable<Intl.SegmentData> {
-		return segmentWithMarkers(text, mode === "word" ? wordSegmenter : graphemeSegmenter, this.validPasteIds());
+		return segmentWithMarkers(
+			text,
+			mode === "word" ? wordSegmenter : graphemeSegmenter,
+			new Set(this.pastes.keys()),
+			new Set(this.images.keys()),
+		);
 	}
 
 	getPaddingX(): number {
@@ -1391,7 +1391,12 @@ export class Editor implements Component, Focusable {
 			const markerRegex = new RegExp(`\\[paste #${pasteId}( (\\+\\d+ lines|\\d+ chars))?\\]`, "g");
 			result = result.replace(markerRegex, () => pasteContent);
 		}
-		return result;
+		return this.expandImageMarkers(result);
+	}
+
+	/** Expand complete image markers when copying selected screen text. */
+	expandImageMarkers(text: string): string {
+		return text.replace(IMAGE_MARKER_REGEX, (marker, id: string) => this.images.get(Number(id)) ?? marker);
 	}
 
 	/**
@@ -1419,6 +1424,8 @@ export class Editor implements Component, Focusable {
 		this.pushUndoSnapshot();
 		this.pastes.clear();
 		this.pasteCounter = 0;
+		this.images.clear();
+		this.imageCounter = 0;
 		this.setTextInternal(normalized);
 	}
 
@@ -1436,6 +1443,17 @@ export class Editor implements Component, Focusable {
 		this.exitHistoryBrowsing();
 		this.deleteSelection();
 		this.insertTextAtCursorInternal(text);
+	}
+
+	insertImageMarker(path: string): void {
+		if (!path) return;
+		this.cancelAutocomplete();
+		this.pushUndoSnapshot();
+		this.lastAction = null;
+		this.exitHistoryBrowsing();
+		const id = ++this.imageCounter;
+		this.images.set(id, path);
+		this.insertTextAtCursorInternal(`[Image ${id}]`);
 	}
 
 	/**
@@ -1672,6 +1690,8 @@ export class Editor implements Component, Focusable {
 		this.anchor = null;
 		this.pastes.clear();
 		this.pasteCounter = 0;
+		this.images.clear();
+		this.imageCounter = 0;
 		this.exitHistoryBrowsing();
 		this.scrollOffset = 0;
 		this.undoStack.clear();
@@ -1679,6 +1699,22 @@ export class Editor implements Component, Focusable {
 
 		if (this.onChange) this.onChange("");
 		if (this.onSubmit) this.onSubmit(result);
+	}
+
+	private reconcileImageMarkers(): void {
+		const text = this.getText();
+		const ids = [...this.images.keys()].filter((id) => text.includes(`[Image ${id}]`)).sort((a, b) => a - b);
+		const numbers = new Map(ids.map((id, index) => [id, index + 1]));
+		const renumber = (value: string) =>
+			value.replace(IMAGE_MARKER_REGEX, (marker, id: string) => {
+				const number = numbers.get(Number(id));
+				return number === undefined ? marker : `[Image ${number}]`;
+			});
+		const before = this.state.lines[this.state.cursorLine]!.slice(0, this.state.cursorCol);
+		this.state.lines = this.state.lines.map(renumber);
+		this.setCursorCol(renumber(before).length);
+		this.images = new Map(ids.map((id) => [numbers.get(id)!, this.images.get(id)!]));
+		this.imageCounter = ids.length;
 	}
 
 	private handleBackspace(): void {
@@ -1744,6 +1780,7 @@ export class Editor implements Component, Focusable {
 			this.setCursorCol(previousLine.length);
 		}
 
+		if (this.images.size) this.reconcileImageMarkers();
 		if (this.onChange) {
 			this.onChange(this.getText());
 		}
@@ -1956,6 +1993,7 @@ export class Editor implements Component, Focusable {
 			this.setCursorCol(previousLine.length);
 		}
 
+		if (this.images.size) this.reconcileImageMarkers();
 		if (this.onChange) {
 			this.onChange(this.getText());
 		}
@@ -1988,6 +2026,7 @@ export class Editor implements Component, Focusable {
 			this.state.lines.splice(this.state.cursorLine + 1, 1);
 		}
 
+		if (this.images.size) this.reconcileImageMarkers();
 		if (this.onChange) {
 			this.onChange(this.getText());
 		}
@@ -2033,6 +2072,7 @@ export class Editor implements Component, Focusable {
 			this.setCursorCol(deleteFrom);
 		}
 
+		if (this.images.size) this.reconcileImageMarkers();
 		if (this.onChange) {
 			this.onChange(this.getText());
 		}
@@ -2075,6 +2115,7 @@ export class Editor implements Component, Focusable {
 				currentLine.slice(0, this.state.cursorCol) + currentLine.slice(deleteTo);
 		}
 
+		if (this.images.size) this.reconcileImageMarkers();
 		if (this.onChange) {
 			this.onChange(this.getText());
 		}
@@ -2109,6 +2150,7 @@ export class Editor implements Component, Focusable {
 			this.state.lines.splice(this.state.cursorLine + 1, 1);
 		}
 
+		if (this.images.size) this.reconcileImageMarkers();
 		if (this.onChange) {
 			this.onChange(this.getText());
 		}
@@ -2291,7 +2333,7 @@ export class Editor implements Component, Focusable {
 		this.setCursorCol(
 			findWordBackward(currentLine, this.state.cursorCol, {
 				segment: (text) => this.segment(text, "word"),
-				isAtomicSegment: isPasteMarker,
+				isAtomicSegment: isAtomicMarker,
 			}),
 		);
 	}
@@ -2485,7 +2527,13 @@ export class Editor implements Component, Focusable {
 	}
 
 	private pushUndoSnapshot(): void {
-		this.undoStack.push({ state: this.state, pastes: this.pastes, pasteCounter: this.pasteCounter });
+		this.undoStack.push({
+			state: this.state,
+			pastes: this.pastes,
+			pasteCounter: this.pasteCounter,
+			images: this.images,
+			imageCounter: this.imageCounter,
+		});
 	}
 
 	private undo(): void {
@@ -2495,6 +2543,8 @@ export class Editor implements Component, Focusable {
 		Object.assign(this.state, snapshot.state);
 		this.pastes = snapshot.pastes;
 		this.pasteCounter = snapshot.pasteCounter;
+		this.images = snapshot.images;
+		this.imageCounter = snapshot.imageCounter;
 		this.lastAction = null;
 		this.anchor = null;
 		this.preferredVisualCol = null;
@@ -2553,7 +2603,7 @@ export class Editor implements Component, Focusable {
 		this.setCursorCol(
 			findWordForward(currentLine, this.state.cursorCol, {
 				segment: (text) => this.segment(text, "word"),
-				isAtomicSegment: isPasteMarker,
+				isAtomicSegment: isAtomicMarker,
 			}),
 		);
 	}

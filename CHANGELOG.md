@@ -12,3 +12,4 @@ Changes carried by this fork until they are available upstream.
 - Expose provider-normalized subscription usage reports on `ModelRegistry`. [#13](https://github.com/AntiD2ta/pi/pull/13)
 - Handle Gemini tool-call-limit stop reasons after upstream dependency updates. [#14](https://github.com/AntiD2ta/pi/pull/14)
 - Refresh reftable footer branches reliably during watcher startup. [#14](https://github.com/AntiD2ta/pi/pull/14)
+- Support opt-in atomic clipboard image markers in the prompt editor. [#17](https://github.com/AntiD2ta/pi/pull/17)
