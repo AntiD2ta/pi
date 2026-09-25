@@ -45,7 +45,7 @@ Modifier combinations: `ctrl+shift+x`, `alt+ctrl+x`, `ctrl+shift+alt+x`, `super+
 
 ### TUI Editor Range Selection
 
-Selection extends from a stable anchor. Reversing direction moves the active end without moving that anchor. Vertical and page movement use visible wrapped rows; the selected text retains only logical newlines. These actions apply to the built-in multiline editor in regular and fullscreen modes. `Ctrl+A` selects the entire prompt, replacing its former line-start default.
+Selection extends from a stable anchor. Reversing direction moves the active end without moving that anchor. Vertical and page movement use visible wrapped rows; the selected text retains only logical newlines. Repeated Shift+Up at the first row extends to its start; repeated Shift+Down at the last row extends to its end. These actions apply to the built-in multiline editor in regular and fullscreen modes. `Ctrl+A` selects the entire prompt, replacing its former line-start default.
 
 | Keybinding id | Default | Description |
 |--------|---------|-------------|
@@ -64,6 +64,8 @@ Selection extends from a stable anchor. Reversing direction moves the active end
 | `tui.editor.selectAll` | `ctrl+a` | Select the whole prompt |
 
 User bindings replace each action's defaults. Modified navigation keys work only when the terminal reports their modifiers; legacy terminals may send the same bytes as unmodified keys. No fallback shortcuts are assigned. In tmux, enable extended keys as described in [tmux setup](tmux.md). An application or fullscreen transcript action explicitly bound to the same key may intercept it before the editor receives it.
+
+In fullscreen mode, double-clicking, triple-clicking, or dragging within editor text also creates an editable selection. A drag may start just after a line's last character or end in that editor row's blank space. Drags started farther into blank space, over the transcript, or across component boundaries remain screen-only. In regular mode, the terminal handles mouse selection; use keyboard actions to select editable text. Backspace, Delete, typing, paste, and yank consume the editor range. The configured newline action replaces it with a newline, but Enter submits the whole prompt. Starting selection closes autocomplete and inline completion. Tab clears the selection without deleting text, then completes from the active end. Focus changes and copying leave an unchanged selection in place. Replacing the editor text or submitting clears it.
 
 The dedicated history actions always change history entries, regardless of the cursor position in a multiline prompt. Explicit history bindings take precedence over application actions while the main editor is focused, so binding `tui.editor.historyPrevious` to `ctrl+p` overrides model cycling in that context without changing `Ctrl+P` in selectors.
 
@@ -183,9 +185,11 @@ This routing remains configurable through the ordinary action bindings. For exam
 | Keybinding id | Default | Description |
 |--------|---------|-------------|
 | `app.tools.expand` | `ctrl+o` | Collapse or expand tool output |
-| `app.message.copy` | `ctrl+x` | Copy the selected message in `/tree`; otherwise copy the last assistant message, or the active fullscreen text selection when `fullscreenCopyOnSelect` is disabled |
+| `app.message.copy` | `ctrl+x` | Copy the selected message in `/tree`; in the prompt, copy editable selection first, then an active fullscreen screen selection when `fullscreenCopyOnSelect` is disabled, then the last assistant message |
 | `app.message.followUp` | `alt+enter` (`ctrl+q` on Windows and WSL) | Queue follow-up message |
 | `app.message.dequeue` | `alt+up` (`alt+q` on Windows and WSL) | Restore queued messages to editor |
+
+Keyboard selection does not copy automatically. Fullscreen mouse copy-on-select remains available. `Ctrl+C` still clears the prompt or exits; `Ctrl+X` is the copy action, not cut.
 
 ### Tree Navigation
 

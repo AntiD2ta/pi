@@ -1396,7 +1396,11 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.requestRender();
 	}
 
-	private getEditorAt(x: number, y: number): { editor: Editor; x: number; y: number } | undefined {
+	private getEditorAt(
+		x: number,
+		y: number,
+		includeEndBoundary = false,
+	): { editor: Editor; x: number; y: number } | undefined {
 		if (!this.currentLayout || this.hasOverlay()) return undefined;
 		const findEditor = (
 			component: Component,
@@ -1405,7 +1409,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			width: number,
 		): { editor: Editor; x: number; y: number } | undefined => {
 			if (component instanceof Editor) {
-				return component.isEditableMouseCell(y - originY, x - originX)
+				return component.isEditableMouseCell(y - originY, x - originX, includeEndBoundary)
 					? { editor: component, x: originX, y: originY }
 					: undefined;
 			}
@@ -1433,7 +1437,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private mirrorEditorSelection(release: SgrMouseEvent): void {
 		const editor = this.mouseSelectionEditor;
 		this.mouseSelectionEditor = undefined;
-		const current = this.getEditorAt(release.x, release.y);
+		const current = this.getEditorAt(release.x, release.y, true);
 		if (!editor || current?.editor !== editor || !this.currentLayout) return;
 		const selection = this.getSelectionBounds();
 		if (!selection) return;

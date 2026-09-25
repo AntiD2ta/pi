@@ -55,6 +55,9 @@ export interface EditorComponent extends Component {
 	 */
 	getExpandedText?(): string;
 
+	/** Selected logical text, with any paste markers expanded. */
+	getSelectedText?(): string | undefined;
+
 	// =========================================================================
 	// Autocomplete support (optional)
 	// =========================================================================

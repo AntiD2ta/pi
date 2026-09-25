@@ -1,9 +1,13 @@
 import type { Component, Terminal, TUI } from "@earendil-works/pi-tui";
 import { Container, getKeybindings, isViewportTUI, ScrollView, setKeybindings, Text } from "@earendil-works/pi-tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Editor } from "../../tui/src/components/editor.ts";
+import { defaultEditorTheme } from "../../tui/test/test-themes.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import type { FullscreenExitOutput, TuiMode } from "../src/core/settings-manager.ts";
+import { createChatViewport } from "../src/modes/interactive/chat-viewport.ts";
+import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
 import {
 	BranchSummaryStatusIndicator,
 	CompactionStatusIndicator,
@@ -104,6 +108,84 @@ describe("createInteractiveTui", () => {
 		} finally {
 			ui.stop();
 			setKeybindings(previousKeybindings);
+		}
+	});
+
+	it("deletes a fullscreen mouse selection in the prompt when its old cursor is outside the range", async () => {
+		const terminal = new RecordingTerminal(120, 36);
+		const ui = createInteractiveTui({
+			tuiMode: "fullscreen",
+			showHardwareCursor: false,
+			logDirectory: "/tmp",
+			terminal,
+		});
+		const editor = new CustomEditor(ui, defaultEditorTheme, new KeybindingsManager());
+		const editorContainer = new Container();
+		editorContainer.addChild(editor);
+		const viewport = createChatViewport({
+			document: new Text("transcript", 0, 0),
+			pendingMessages: new Container(),
+			status: new Container(),
+			editor: editorContainer,
+			footer: new Text("footer", 0, 0),
+		});
+		editor.setText("first\nsecond\nthird");
+		ui.setLayoutRoot(viewport.root);
+		ui.setFocus(editor);
+		ui.start();
+		try {
+			await terminal.waitForRender();
+			const lines = terminal.getViewport();
+			const second = lines.findIndex((line) => line.includes("second")) + 1;
+			const third = lines.findIndex((line) => line.includes("third")) + 1;
+			expect(second).toBeGreaterThan(0);
+			expect(third).toBeGreaterThan(second);
+			terminal.sendInput(`\x1b[<0;1;${second}M`);
+			terminal.sendInput(`\x1b[<32;6;${third}M`);
+			terminal.sendInput(`\x1b[<0;6;${third}m`);
+			await terminal.waitForRender();
+			terminal.sendInput("\x7f");
+			expect(editor.getText()).toBe("first\n");
+		} finally {
+			ui.stop();
+		}
+	});
+
+	it("keeps an unchanged editor selection across regular and fullscreen renderer switches", async () => {
+		const terminal = new RecordingTerminal(40, 8);
+		const renderer = createInteractiveTui({
+			tuiMode: "regular",
+			showHardwareCursor: false,
+			logDirectory: "/tmp",
+			terminal,
+		});
+		const editor = new Editor(renderer, defaultEditorTheme);
+		editor.setText("selected prompt");
+		editor.handleInput("\x01");
+		renderer.addChild(editor);
+		renderer.setFocus(editor);
+		const context = Object.assign(Object.create(InteractiveMode.prototype), {
+			runtimeHost: { session: { settingsManager: { getFullscreenCopyOnSelect: () => true } } },
+			renderer,
+			fullscreenLayoutRoot: editor,
+			options: { tuiMode: "regular" as TuiMode },
+			themeController: { rebindTui: () => {} },
+			extensionTerminalInputSubscriptions: new Set<never>(),
+		}) as { renderer: ReturnType<typeof createInteractiveTui>; ui: TUI };
+		context.ui = createInteractiveTuiReference(() => context.renderer);
+		const switchMode = InteractiveMode.prototype as unknown as {
+			switchTuiMode(this: typeof context, mode: TuiMode, restoreProgress?: boolean): boolean;
+		};
+		renderer.start();
+		try {
+			for (const mode of ["fullscreen", "regular"] as const) {
+				expect(switchMode.switchTuiMode.call(context, mode, false)).toBe(true);
+				await terminal.waitForRender();
+				expect(context.renderer.getFocusedComponent()).toBe(editor);
+				expect(editor.getSelectedText()).toBe("selected prompt");
+			}
+		} finally {
+			context.renderer.stop();
 		}
 	});
 
@@ -217,6 +299,7 @@ describe("InteractiveMode right-click paste", () => {
 type CopyCommandContext = {
 	session: { getLastAssistantText: () => string | undefined };
 	ui: ReturnType<typeof createInteractiveTui>;
+	editor?: Editor;
 	showStatus: (message: string) => void;
 	showError: (message: string) => void;
 };
@@ -233,6 +316,95 @@ describe("InteractiveMode copy confirmation", () => {
 	beforeEach(() => {
 		clipboardMocks.copyToClipboard.mockReset();
 		clipboardMocks.copyToClipboard.mockResolvedValue(undefined);
+	});
+
+	it("routes Ctrl+X to editor copy while Ctrl+C keeps its clear action", async () => {
+		const ui = createInteractiveTui({
+			tuiMode: "regular",
+			showHardwareCursor: false,
+			logDirectory: "/tmp",
+			terminal: new RecordingTerminal(),
+		});
+		const editor = new CustomEditor(ui, defaultEditorTheme, new KeybindingsManager());
+		const clear = vi.fn();
+		editor.onAction("app.clear", clear);
+		const context: CopyCommandContext = {
+			session: { getLastAssistantText: () => "assistant response" },
+			ui,
+			editor,
+			showStatus: vi.fn(),
+			showError: vi.fn(),
+		};
+		editor.onAction("app.message.copy", () => {
+			void copyCommandPrototype.handleCopyCommand.call(context, { preferSelection: true });
+		});
+		editor.setText("selected prompt");
+		editor.handleInput("\x01");
+		editor.handleInput("\x18");
+		await vi.waitFor(() => expect(clipboardMocks.copyToClipboard).toHaveBeenCalledWith("selected prompt"));
+		expect(editor.getSelectedText()).toBe("selected prompt");
+		editor.handleInput("\x03");
+		expect(clear).toHaveBeenCalledOnce();
+		expect(editor.getText()).toBe("selected prompt");
+	});
+
+	it("copies the editor range before the assistant message without consuming the range", async () => {
+		const ui = createInteractiveTui({
+			tuiMode: "regular",
+			showHardwareCursor: false,
+			logDirectory: "/tmp",
+			terminal: new RecordingTerminal(),
+		});
+		const editor = new Editor(ui, defaultEditorTheme);
+		editor.setText("first\nsecond");
+		editor.handleInput("\x01");
+		expect(clipboardMocks.copyToClipboard).not.toHaveBeenCalled();
+		const getLastAssistantText = vi.fn(() => "assistant response");
+		const showError = vi.fn();
+		await copyCommandPrototype.handleCopyCommand.call(
+			{ session: { getLastAssistantText }, ui, editor, showStatus: vi.fn(), showError },
+			{ preferSelection: true },
+		);
+		expect(clipboardMocks.copyToClipboard).toHaveBeenCalledWith("first\nsecond");
+		expect(getLastAssistantText).not.toHaveBeenCalled();
+		await copyCommandPrototype.handleCopyCommand.call(
+			{ session: { getLastAssistantText }, ui, editor, showStatus: vi.fn(), showError },
+			{ preferSelection: true },
+		);
+		expect(clipboardMocks.copyToClipboard).toHaveBeenCalledTimes(2);
+		expect(editor.getText()).toBe("first\nsecond");
+	});
+
+	it("prefers editor selection over an active fullscreen screen selection", async () => {
+		const terminal = new RecordingTerminal(40, 6);
+		const ui = createInteractiveTui({
+			tuiMode: "fullscreen",
+			showHardwareCursor: false,
+			logDirectory: "/tmp",
+			terminal,
+			fullscreenCopyOnSelect: false,
+		});
+		ui.addChild(new Text("screen text\nother text", 0, 0));
+		const editor = new Editor(ui, defaultEditorTheme);
+		editor.setText("editor text");
+		editor.handleInput("\x01");
+		ui.start();
+		try {
+			await terminal.waitForRender();
+			terminal.sendInput("\x1b[<0;1;1M");
+			terminal.sendInput("\x1b[<32;4;1M");
+			terminal.sendInput("\x1b[<0;4;1m");
+			await terminal.waitForRender();
+			const getLastAssistantText = vi.fn(() => "assistant response");
+			await copyCommandPrototype.handleCopyCommand.call(
+				{ session: { getLastAssistantText }, ui, editor, showStatus: vi.fn(), showError: vi.fn() },
+				{ preferSelection: true },
+			);
+			expect(clipboardMocks.copyToClipboard).toHaveBeenLastCalledWith("editor text");
+			expect(getLastAssistantText).not.toHaveBeenCalled();
+		} finally {
+			ui.stop();
+		}
 	});
 
 	it("copies an active fullscreen selection when copy-on-select is disabled", async () => {

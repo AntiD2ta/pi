@@ -482,6 +482,7 @@ export class Editor implements Component, Focusable {
 			this.historyDraft = null;
 			if (draft) {
 				this.state = draft;
+				this.anchor = null;
 				this.preferredVisualCol = null;
 				this.snappedFromCursorCol = null;
 				this.scrollOffset = 0;
@@ -695,12 +696,16 @@ export class Editor implements Component, Focusable {
 		return result;
 	}
 
-	isEditableMouseCell(row: number, col: number): boolean {
+	isEditableMouseCell(row: number, col: number, includeEndBoundary = false): boolean {
 		if (row <= 0 || row > this.renderedVisibleLineCount) return false;
 		const visual = this.buildVisualLineMap(this.lastWidth)[this.scrollOffset + row - 1];
 		if (!visual) return false;
 		const text = this.state.lines[visual.logicalLine]!.slice(visual.startCol, visual.startCol + visual.length);
-		return col >= this.renderedPaddingX && col < this.renderedPaddingX + visibleWidth(text);
+		const textEnd = this.renderedPaddingX + visibleWidth(text);
+		return (
+			col >= this.renderedPaddingX &&
+			(col <= textEnd || (includeEndBoundary && col < this.renderedPaddingX + this.lastWidth))
+		);
 	}
 
 	clearMouseSelection(): void {
@@ -911,6 +916,11 @@ export class Editor implements Component, Focusable {
 			return;
 		}
 
+		if (kb.matches(data, "tui.input.tab") && this.anchor) {
+			this.anchor = null;
+			this.cancelAutocomplete();
+		}
+
 		// Undo
 		if (kb.matches(data, "tui.editor.undo")) {
 			this.undo();
@@ -998,7 +1008,13 @@ export class Editor implements Component, Focusable {
 				this.state.cursorLine = this.state.lines.length - 1;
 				this.setCursorCol(this.state.lines[this.state.cursorLine]!.length);
 				this.lastAction = null;
-			} else this.moveCursor(kb.matches(data, "tui.editor.selectUp") ? -1 : 1, 0);
+			} else {
+				const down = kb.matches(data, "tui.editor.selectDown");
+				const visualLines = this.buildVisualLineMap(this.lastWidth);
+				const atEdge = this.findCurrentVisualLine(visualLines) === (down ? visualLines.length - 1 : 0);
+				if (atEdge) this.setCursorCol(down ? this.state.lines[this.state.cursorLine]!.length : 0);
+				else this.moveCursor(down ? 1 : -1, 0);
+			}
 			return;
 		}
 		if (kb.matches(data, "tui.editor.selectAll")) {
@@ -1369,14 +1385,12 @@ export class Editor implements Component, Focusable {
 	}
 
 	setText(text: string): void {
+		const normalized = this.normalizeText(text);
+		if (this.getText() === normalized) return;
 		this.cancelAutocomplete();
 		this.lastAction = null;
 		this.exitHistoryBrowsing();
-		const normalized = this.normalizeText(text);
-		// Push undo snapshot if content differs (makes programmatic changes undoable)
-		if (this.getText() !== normalized) {
-			this.pushUndoSnapshot();
-		}
+		this.pushUndoSnapshot();
 		this.pastes.clear();
 		this.pasteCounter = 0;
 		this.setTextInternal(normalized);
@@ -2376,6 +2390,19 @@ export class Editor implements Component, Focusable {
 		if (this.onChange) {
 			this.onChange(this.getText());
 		}
+	}
+
+	getSelectedText(): string | undefined {
+		const selection = this.getSelection();
+		if (!selection) return undefined;
+		const { start, end } = selection;
+		const lines = this.state.lines.slice(start.line, end.line + 1);
+		lines[0] = lines[0]!.slice(start.col);
+		lines[lines.length - 1] =
+			lines.length === 1
+				? this.state.lines[start.line]!.slice(start.col, end.col)
+				: lines[lines.length - 1]!.slice(0, end.col);
+		return this.expandPasteMarkers(lines.join("\n"));
 	}
 
 	private getSelection(): { start: EditorPosition; end: EditorPosition } | null {

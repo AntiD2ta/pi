@@ -1353,6 +1353,50 @@ describe("TuiAltScreen", () => {
 		}
 	});
 
+	it("extends a keyboard selection through more than two editor lines", async () => {
+		const terminal = new VirtualTerminal(30, 24);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText("one\ntwo\nthree\nfour");
+		tui.setLayoutRoot(input);
+		tui.setFocus(input);
+		tui.start();
+		try {
+			await terminal.waitForRender();
+			for (let index = 0; index < 3; index++) terminal.sendInput("\x1b[1;2A");
+			await terminal.waitForRender();
+			assert.strictEqual(input.getSelectedText(), "\ntwo\nthree\nfour");
+			terminal.sendInput("\x1b[1;2A");
+			assert.strictEqual(input.getSelectedText(), "one\ntwo\nthree\nfour");
+			terminal.sendInput("\x7f");
+			assert.strictEqual(input.getText(), "");
+		} finally {
+			tui.stop();
+		}
+	});
+
+	it("extends downward to the last row's end after reaching it", async () => {
+		const terminal = new VirtualTerminal(30, 24);
+		const tui = new TuiAltScreen(terminal);
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText("one\ntwo\nthree\nfour");
+		tui.setLayoutRoot(input);
+		tui.setFocus(input);
+		tui.start();
+		try {
+			await terminal.waitForRender();
+			terminal.sendInput("\x01");
+			terminal.sendInput("\x1b[D");
+			terminal.sendInput("\x1b[1;2B");
+			terminal.sendInput("\x1b[1;2B");
+			terminal.sendInput("\x1b[1;2B");
+			terminal.sendInput("\x1b[1;2B");
+			assert.strictEqual(input.getSelectedText(), "one\ntwo\nthree\nfour");
+		} finally {
+			tui.stop();
+		}
+	});
+
 	it("edits forward and reverse drags across wrapped and logical lines", async () => {
 		for (const reverse of [false, true]) {
 			const terminal = new VirtualTerminal(12, 24);
@@ -1421,6 +1465,37 @@ describe("TuiAltScreen", () => {
 		input.handleInput("X");
 		assert.strictEqual(input.getText(), "abcdefghijklmnopqrstX");
 		tui.stop();
+	});
+
+	it("does not turn a drag into an adjacent editor's blank row into an edit", async () => {
+		const terminal = new VirtualTerminal(20, 24);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const first = new Editor(tui, defaultEditorTheme);
+		const second = new Editor(tui, defaultEditorTheme);
+		first.setText("left");
+		second.setText("right");
+		tui.setLayoutRoot(
+			new HStack([
+				{ component: first, basis: 10 },
+				{ component: second, basis: 10 },
+			]),
+		);
+		tui.setFocus(first);
+		tui.start();
+		try {
+			await terminal.waitForRender();
+			const row = terminal.getViewport().findIndex((line) => line.includes("left")) + 1;
+			terminal.sendInput(`\x1b[<0;1;${row}M`);
+			terminal.sendInput(`\x1b[<32;19;${row}M`);
+			terminal.sendInput(`\x1b[<0;19;${row}m`);
+			await terminal.waitForRender();
+			assert.strictEqual(first.getSelectedText(), undefined);
+			assert.strictEqual(second.getSelectedText(), undefined);
+			assert.strictEqual(first.getText(), "left");
+			assert.strictEqual(second.getText(), "right");
+		} finally {
+			tui.stop();
+		}
 	});
 
 	it("keeps transcript and cross-boundary drags screen-only", async () => {

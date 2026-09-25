@@ -278,6 +278,115 @@ describe("keyboard editor selection", () => {
 		assert.match(input.render(8).join("\n"), /\x1b\[7m你\x1b\[0m/);
 	});
 
+	it("starting selection closes visible autocomplete and inline completion", async () => {
+		for (const inline of [false, true]) {
+			const input = editor();
+			input.setAutocompleteProvider({
+				getSuggestions: async () => ({
+					items: [{ value: "/review", label: "review" }],
+					prefix: "/",
+					...(inline ? { inlineCompletion: { value: "/review", label: "review" } } : {}),
+				}),
+				applyCompletion: () => ({ lines: ["/review"], cursorLine: 0, cursorCol: 7 }),
+			});
+			input.handleInput("/");
+			await new Promise((resolve) => setImmediate(resolve));
+			await new Promise((resolve) => setImmediate(resolve));
+			assert.equal(input.isShowingAutocomplete(), true);
+			input.handleInput("\x1b[1;2D");
+			assert.equal(input.isShowingAutocomplete(), false);
+			assert.equal(input.getSelectedText(), "/");
+		}
+	});
+
+	it("selection cancels visible inline completion and its pending request", async () => {
+		const input = editor();
+		let resolveSuggestions:
+			| ((value: {
+					items: { value: string; label: string }[];
+					prefix: string;
+					inlineCompletion: { value: string; label: string };
+			  }) => void)
+			| undefined;
+		input.setAutocompleteProvider({
+			getSuggestions: async () =>
+				new Promise((resolve) => {
+					resolveSuggestions = resolve;
+				}),
+			applyCompletion: () => ({ lines: ["/review"], cursorLine: 0, cursorCol: 7 }),
+		});
+		input.handleInput("/");
+		await new Promise((resolve) => setImmediate(resolve));
+		input.handleInput("\x1b[1;2D");
+		resolveSuggestions?.({
+			items: [{ value: "/review", label: "review" }],
+			prefix: "/",
+			inlineCompletion: { value: "/review", label: "review" },
+		});
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.equal(input.isShowingAutocomplete(), false);
+		assert.equal(input.getSelectedText(), "/");
+		input.handleInput("\x1b[C");
+		input.handleInput("\t");
+		assert.equal(input.getText(), "/");
+	});
+
+	it("Tab clears a range without deleting it and completes from its active endpoint", async () => {
+		const input = editor();
+		input.setAutocompleteProvider({
+			getSuggestions: async (_lines, _line, col) =>
+				col === 4 ? { items: [{ value: "/review", label: "review" }], prefix: "/rev" } : null,
+			applyCompletion: (_lines, _line, col) => ({ lines: ["/review"], cursorLine: 0, cursorCol: col + 3 }),
+		});
+		input.setText("/rev");
+		input.handleInput("\x01");
+		input.handleInput("\t");
+		await new Promise((resolve) => setImmediate(resolve));
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.equal(input.getSelectedText(), undefined);
+		assert.equal(input.isShowingAutocomplete(), true);
+		input.handleInput("\t");
+		assert.equal(input.getText(), "/review");
+	});
+
+	it("keeps a selection on unchanged external text and clears it on replacement or history browsing", () => {
+		const input = editor();
+		input.setText("draft");
+		input.addToHistory("older");
+		input.handleInput("\x01");
+		assert.equal(input.getSelectedText(), "draft");
+		input.setText("draft");
+		assert.equal(input.getSelectedText(), "draft");
+		input.handleInput("\x1b[A");
+		assert.equal(input.getSelectedText(), undefined);
+		input.handleInput("\x1b[B");
+		assert.equal(input.getSelectedText(), undefined);
+		input.handleInput("\x01");
+		input.setText("new");
+		assert.equal(input.getSelectedText(), undefined);
+	});
+
+	it("returns expanded paste content when the marker is selected", () => {
+		const input = editor();
+		const paste = "line\n".repeat(12);
+		input.handleInput(`\x1b[200~${paste}\x1b[201~`);
+		input.handleInput("\x01");
+		assert.equal(input.getSelectedText(), paste);
+		assert.equal(input.getExpandedText(), paste);
+	});
+
+	it("submits the complete selected prompt and clears the selection", () => {
+		const input = editor();
+		const submitted: string[] = [];
+		input.onSubmit = (text) => submitted.push(text);
+		input.setText("first\nsecond");
+		input.handleInput("\x01");
+		input.handleInput("\r");
+		assert.deepEqual(submitted, ["first\nsecond"]);
+		assert.equal(input.getText(), "");
+		assert.equal(input.getSelectedText(), undefined);
+	});
+
 	it("renders the same editor selection in regular and fullscreen TUI modes", () => {
 		const terminal = new VirtualTerminal(20, 24);
 		for (const tui of [new TuiMainScreen(terminal), new TuiAltScreen(terminal)]) {
