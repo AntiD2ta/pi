@@ -1,9 +1,17 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { afterEach, beforeEach, test } from "node:test";
 import { Editor } from "../src/components/editor.ts";
+import { getKeybindings, KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "../src/keybindings.ts";
 import { TuiMainScreen } from "../src/tui-main-screen.ts";
 import { defaultEditorTheme } from "./test-themes.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
+
+let previousKeybindings: KeybindingsManager;
+beforeEach(() => {
+	previousKeybindings = getKeybindings();
+	setKeybindings(new KeybindingsManager(TUI_KEYBINDINGS));
+});
+afterEach(() => setKeybindings(previousKeybindings));
 
 function editor(): Editor {
 	return new Editor(new TuiMainScreen(new VirtualTerminal(80, 24)), defaultEditorTheme);
