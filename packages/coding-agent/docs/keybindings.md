@@ -84,6 +84,7 @@ The dedicated history actions always change history entries, regardless of the c
 
 | Keybinding id | Default | Description |
 |--------|---------|-------------|
+| `tui.input.cursorLineStart` | `ctrl+a` | Move to start in single-line inputs; the multiline editor uses `tui.editor.selectAll` instead |
 | `tui.input.newLine` | `shift+enter`, `ctrl+j` | Insert new line |
 | `tui.input.submit` | `enter` | Submit input |
 | `tui.input.tab` | `tab` | Tab / autocomplete |

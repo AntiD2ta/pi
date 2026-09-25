@@ -43,6 +43,7 @@ export interface Keybindings {
 	"tui.editor.yankPop": true;
 	"tui.editor.undo": true;
 	// Generic input actions
+	"tui.input.cursorLineStart": true;
 	"tui.input.newLine": true;
 	"tui.input.submit": true;
 	"tui.input.tab": true;
@@ -172,6 +173,7 @@ export const TUI_KEYBINDINGS = {
 	"tui.editor.yank": { defaultKeys: "ctrl+y", description: "Yank" },
 	"tui.editor.yankPop": { defaultKeys: "alt+y", description: "Yank pop" },
 	"tui.editor.undo": { defaultKeys: "ctrl+-", description: "Undo" },
+	"tui.input.cursorLineStart": { defaultKeys: "ctrl+a", description: "Move single-line cursor to start" },
 	"tui.input.newLine": { defaultKeys: ["shift+enter", "ctrl+j"], description: "Insert newline" },
 	"tui.input.submit": { defaultKeys: "enter", description: "Submit input" },
 	"tui.input.tab": { defaultKeys: "tab", description: "Tab / autocomplete" },

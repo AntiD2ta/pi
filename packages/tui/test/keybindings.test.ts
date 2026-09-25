@@ -17,6 +17,7 @@ describe("KeybindingsManager", () => {
 		assert.deepStrictEqual(keybindings.getKeys("tui.editor.cursorLineStart"), ["home", "ctrl+home"]);
 		assert.deepStrictEqual(keybindings.getKeys("tui.editor.cursorLineEnd"), ["end", "ctrl+end", "ctrl+e"]);
 		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectAll"), ["ctrl+a"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.input.cursorLineStart"), ["ctrl+a"]);
 		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectLeft"), ["shift+left"]);
 		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectRight"), ["shift+right"]);
 		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectUp"), ["shift+up"]);
@@ -75,6 +76,7 @@ describe("KeybindingsManager", () => {
 		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectLeft"), ["alt+shift+left"]);
 		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectAll"), ["ctrl+shift+a"]);
 		assert.strictEqual(keybindings.matches("\x01", "tui.editor.selectAll"), false);
+		assert.strictEqual(keybindings.matches("\x01", "tui.input.cursorLineStart"), true);
 	});
 
 	it("leaves dedicated prompt history navigation unbound by default", () => {
