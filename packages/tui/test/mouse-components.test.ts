@@ -205,6 +205,48 @@ describe("mouse-aware components", () => {
 		tui.stop();
 	});
 
+	it("scrolls a long editor prompt with the wheel without moving the cursor", () => {
+		const terminal = new VirtualTerminal(20, 20);
+		const editor = new Editor(new TuiAltScreen(terminal), editorTheme);
+		editor.setText(Array.from({ length: 10 }, (_, i) => `line ${i}`).join("\n"));
+		const cursor = editor.getCursor();
+		assert.match(editor.render(20)[1]!, /line 4/);
+
+		assert.strictEqual(editor.handleMouse({ ...mouse("wheel", 1, 2, 20, 8), wheelDelta: -2 })?.handled, true);
+		assert.match(editor.render(20)[1]!, /line 2/);
+		assert.deepStrictEqual(editor.getCursor(), cursor);
+	});
+
+	it("returns to the cursor when typing after wheel scrolling", () => {
+		const terminal = new VirtualTerminal(20, 20);
+		const editor = new Editor(new TuiAltScreen(terminal), editorTheme);
+		editor.setText(Array.from({ length: 10 }, (_, i) => `line ${i}`).join("\n"));
+		editor.render(20);
+		editor.handleMouse({ ...mouse("wheel", 1, 2, 20, 8), wheelDelta: -2 });
+		assert.match(editor.render(20)[1]!, /line 2/);
+
+		editor.handleInput("X");
+		assert.match(editor.render(20)[6]!, /line 9X/);
+		assert.deepStrictEqual(editor.getCursor(), { line: 9, col: 7 });
+	});
+
+	it("routes fullscreen wheel input to the editor instead of the transcript", async () => {
+		const terminal = new VirtualTerminal(20, 20);
+		const tui = new TuiAltScreen(terminal);
+		const editor = new Editor(tui, editorTheme);
+		editor.setText(Array.from({ length: 10 }, (_, i) => `line ${i}`).join("\n"));
+		tui.addChild(editor);
+		tui.start();
+		await terminal.waitForRender();
+		const cursor = editor.getCursor();
+
+		terminal.sendInput("\x1b[<64;2;3M");
+		await terminal.waitForRender();
+		assert.match(editor.render(20)[1]!, /line 3/);
+		assert.deepStrictEqual(editor.getCursor(), cursor);
+		tui.stop();
+	});
+
 	it("positions and focuses the multiline editor through alternate-screen dispatch", async () => {
 		const terminal = new VirtualTerminal(20, 6);
 		const tui = new TuiAltScreen(terminal);

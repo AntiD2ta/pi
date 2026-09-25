@@ -325,6 +325,7 @@ export class Editor implements Component, Focusable {
 
 	// Vertical scrolling support
 	private scrollOffset: number = 0;
+	private wheelScrolled = false;
 
 	// Border color (can be changed dynamically)
 	public borderColor: (str: string) => string;
@@ -519,6 +520,7 @@ export class Editor implements Component, Focusable {
 		this.setCursorCol(cursorPlacement === "start" ? 0 : this.state.lines[this.state.cursorLine]?.length || 0);
 		// Reset scroll - render() will adjust to show cursor
 		this.scrollOffset = 0;
+		this.wheelScrolled = false;
 
 		if (this.onChange) {
 			this.onChange(this.getText());
@@ -563,11 +565,13 @@ export class Editor implements Component, Focusable {
 		let cursorLineIndex = layoutLines.findIndex((line) => line.hasCursor);
 		if (cursorLineIndex === -1) cursorLineIndex = 0;
 
-		// Adjust scroll offset to keep cursor visible
-		if (cursorLineIndex < this.scrollOffset) {
-			this.scrollOffset = cursorLineIndex;
-		} else if (cursorLineIndex >= this.scrollOffset + maxVisibleLines) {
-			this.scrollOffset = cursorLineIndex - maxVisibleLines + 1;
+		// Adjust scroll offset to keep cursor visible after keyboard edits and navigation.
+		if (!this.wheelScrolled) {
+			if (cursorLineIndex < this.scrollOffset) {
+				this.scrollOffset = cursorLineIndex;
+			} else if (cursorLineIndex >= this.scrollOffset + maxVisibleLines) {
+				this.scrollOffset = cursorLineIndex - maxVisibleLines + 1;
+			}
 		}
 
 		// Clamp scroll offset to valid range
@@ -828,6 +832,16 @@ export class Editor implements Component, Focusable {
 			return result ? { ...result, focus: true } : undefined;
 		}
 
+		if (event.type === "wheel" && event.wheelDelta && event.y < autocompleteStartRow) {
+			const maxVisibleLines = Math.max(5, Math.floor(this.tui.terminal.rows * 0.3));
+			const maxScrollOffset = Math.max(0, this.layoutText(this.lastWidth).length - maxVisibleLines);
+			const next = Math.max(0, Math.min(maxScrollOffset, this.scrollOffset + event.wheelDelta));
+			if (next === this.scrollOffset) return undefined;
+			this.scrollOffset = next;
+			this.wheelScrolled = true;
+			return { handled: true };
+		}
+
 		// Leave press/drag/release unhandled so the renderer's screen-level text
 		// selection can run over the editor rows (drag to select, release to copy).
 		// The renderer synthesizes a click when press and release land on the same
@@ -865,6 +879,7 @@ export class Editor implements Component, Focusable {
 		this.state.cursorLine = visualLine.logicalLine;
 		this.setCursorCol(visualLine.startCol + targetIndex);
 		this.anchor = null;
+		this.wheelScrolled = false;
 		this.lastAction = null;
 		this.exitHistoryBrowsing();
 		if (this.autocompleteState) this.updateAutocomplete();
@@ -872,6 +887,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	handleInput(data: string): void {
+		this.wheelScrolled = false;
 		const kb = getKeybindings();
 
 		// Handle character jump mode (awaiting next character to jump to)
@@ -1413,6 +1429,7 @@ export class Editor implements Component, Focusable {
 	 */
 	insertTextAtCursor(text: string): void {
 		if (!text) return;
+		this.wheelScrolled = false;
 		this.cancelAutocomplete();
 		this.pushUndoSnapshot();
 		this.lastAction = null;
