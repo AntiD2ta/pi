@@ -169,6 +169,33 @@ describe("createInteractiveTui", () => {
 	});
 });
 
+describe("Fullscreen image marker copy", () => {
+	it("copies the underlying path for a complete selected marker", async () => {
+		clipboardMocks.copyToClipboard.mockReset();
+		clipboardMocks.copyToClipboard.mockResolvedValue(undefined);
+		const terminal = new RecordingTerminal(40, 6);
+		const ui = createInteractiveTui({
+			tuiMode: "fullscreen",
+			showHardwareCursor: false,
+			logDirectory: "/tmp",
+			terminal,
+			transformCopiedText: (text) => text.replace("[Image 1]", "/tmp/photo.png"),
+		});
+		ui.addChild(new Text("[Image 1]", 0, 0));
+		ui.start();
+		try {
+			await terminal.waitForRender();
+			terminal.sendInput("\x1b[<0;1;1M");
+			terminal.sendInput("\x1b[<32;10;1M");
+			terminal.sendInput("\x1b[<0;10;1m");
+			await terminal.waitForRender();
+			expect(clipboardMocks.copyToClipboard).toHaveBeenCalledWith("/tmp/photo.png");
+		} finally {
+			ui.stop();
+		}
+	});
+});
+
 describe("InteractiveMode extension headers", () => {
 	it("keeps Pi's startup header when an extension adds a header", () => {
 		const builtInHeader = new Text("Pi startup", 0, 0);

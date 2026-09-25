@@ -49,6 +49,12 @@ export interface EditorComponent extends Component {
 	/** Insert text at current cursor position */
 	insertTextAtCursor?(text: string): void;
 
+	/** Insert an atomic image path marker at the cursor. */
+	insertImageMarker?(path: string): void;
+
+	/** Expand complete image markers in selected display text. */
+	expandImageMarkers?(text: string): string;
+
 	/**
 	 * Get text with any markers expanded (e.g., paste markers).
 	 * Falls back to getText() if not implemented.

@@ -247,6 +247,8 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 			this.setEditorText(text);
 		},
 
+		setImageMarkersEnabled(): void {},
+
 		setEditorText(text: string): void {
 			// Fire and forget - host can implement editor control
 			output({
