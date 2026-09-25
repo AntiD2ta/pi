@@ -221,7 +221,7 @@ describe("mouse-aware components", () => {
 		tui.stop();
 	});
 
-	it("selects and copies editor text on drag instead of moving the cursor", async () => {
+	it("selects and copies editor text on drag while making it editable", async () => {
 		const terminal = new VirtualTerminal(20, 6);
 		const copied: string[] = [];
 		const tui = new TuiAltScreen(terminal, undefined, undefined, {
@@ -235,7 +235,6 @@ describe("mouse-aware components", () => {
 		tui.addChild(editor);
 		tui.start();
 		await terminal.waitForRender();
-		const cursorBefore = editor.getCursor();
 
 		terminal.sendInput("\x1b[<0;1;2M");
 		terminal.sendInput("\x1b[<32;5;2M");
@@ -243,7 +242,8 @@ describe("mouse-aware components", () => {
 		await terminal.waitForRender();
 
 		assert.deepStrictEqual(copied, ["hello"]);
-		assert.deepStrictEqual(editor.getCursor(), cursorBefore);
+		editor.handleInput("\x7f");
+		assert.strictEqual(editor.getText(), " world");
 		tui.stop();
 	});
 });

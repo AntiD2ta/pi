@@ -310,6 +310,7 @@ export class Editor implements Component, Focusable {
 	// Store last render geometry for cursor navigation and mouse hit-testing.
 	private lastWidth: number = 80;
 	private renderedVisibleLineCount = 1;
+	private renderedPaddingX = 0;
 	private renderedAutocompleteHeight = 0;
 
 	// Vertical scrolling support
@@ -530,6 +531,7 @@ export class Editor implements Component, Focusable {
 	render(width: number): string[] {
 		const maxPadding = Math.max(0, Math.floor((width - 1) / 2));
 		const paddingX = Math.min(this.paddingX, maxPadding);
+		this.renderedPaddingX = paddingX;
 		const contentWidth = Math.max(1, width - paddingX * 2);
 
 		// Layout width: with padding the cursor can overflow into it,
@@ -620,7 +622,9 @@ export class Editor implements Component, Focusable {
 				// Hardware cursor marker (zero-width, emitted before fake cursor for IME positioning)
 				const marker = emitCursorMarker ? CURSOR_MARKER : "";
 
-				if (after.length > 0) {
+				if (selection) {
+					displayText = highlight(before, 0) + marker + highlight(after, layoutLine.cursorPos);
+				} else if (after.length > 0) {
 					// Cursor is on a character (grapheme) - replace it with highlighted version
 					// Get the first grapheme from 'after'
 					const afterGraphemes = [...this.segment(after, "grapheme")];
@@ -689,6 +693,103 @@ export class Editor implements Component, Focusable {
 		}
 
 		return result;
+	}
+
+	isEditableMouseCell(row: number, col: number): boolean {
+		if (row <= 0 || row > this.renderedVisibleLineCount) return false;
+		const visual = this.buildVisualLineMap(this.lastWidth)[this.scrollOffset + row - 1];
+		if (!visual) return false;
+		const text = this.state.lines[visual.logicalLine]!.slice(visual.startCol, visual.startCol + visual.length);
+		return col >= this.renderedPaddingX && col < this.renderedPaddingX + visibleWidth(text);
+	}
+
+	clearMouseSelection(): void {
+		this.anchor = null;
+	}
+
+	setMouseSelection(
+		start: { row: number; col: number; boundary?: boolean },
+		end: { row: number; col: number; boundary?: boolean },
+		forward: boolean,
+	):
+		| {
+				start: { row: number; col: number; boundary?: boolean };
+				end: { row: number; col: number; boundary?: boolean };
+		  }
+		| undefined
+		| null {
+		const visualLines = this.buildVisualLineMap(this.lastWidth);
+		const paddingX = this.renderedPaddingX;
+		const toPosition = (
+			point: { row: number; col: number; boundary?: boolean },
+			isEnd: boolean,
+		): EditorPosition | undefined => {
+			if (point.row <= 0 || point.row > this.renderedVisibleLineCount) return undefined;
+			const visual = visualLines[this.scrollOffset + point.row - 1];
+			if (!visual) return undefined;
+			const chunk = this.state.lines[visual.logicalLine]!.slice(visual.startCol, visual.startCol + visual.length);
+			const column = Math.max(0, point.col - paddingX);
+			let offset = chunk.length;
+			let cell = 0;
+			for (const grapheme of graphemeSegmenter.segment(chunk)) {
+				if (isEnd && point.boundary && column === cell) {
+					offset = grapheme.index;
+					break;
+				}
+				const next = cell + visibleWidth(grapheme.segment);
+				if (column < next) {
+					offset = grapheme.index + (isEnd ? grapheme.segment.length : 0);
+					break;
+				}
+				cell = next;
+			}
+			return { line: visual.logicalLine, col: visual.startCol + offset };
+		};
+		const first = toPosition(start, false);
+		const last = toPosition(end, true);
+		if (!first || !last) return null;
+		const initialStart = first.col;
+		const initialEnd = last.col;
+		for (const [position, isEnd] of [
+			[first, false],
+			[last, true],
+		] as const) {
+			for (const segment of this.segment(this.state.lines[position.line]!, "grapheme")) {
+				if (segment.index >= position.col) break;
+				if (position.col < segment.index + segment.segment.length) {
+					position.col = isEnd ? segment.index + segment.segment.length : segment.index;
+					break;
+				}
+			}
+		}
+		this.anchor = { ...(forward ? first : last) };
+		const active = forward ? last : first;
+		this.state.cursorLine = active.line;
+		this.setCursorCol(active.col);
+		this.cancelAutocomplete();
+		this.lastAction = null;
+		if (first.col === initialStart && last.col === initialEnd) return undefined;
+		const toCell = (position: EditorPosition): { row: number; col: number; boundary: true } => {
+			const index = this.findVisualLineAt(visualLines, position.line, position.col);
+			if (index < this.scrollOffset) return { row: 1, col: paddingX, boundary: true };
+			if (index >= this.scrollOffset + this.renderedVisibleLineCount) {
+				const last = visualLines[this.scrollOffset + this.renderedVisibleLineCount - 1]!;
+				return {
+					row: this.renderedVisibleLineCount,
+					col:
+						paddingX +
+						visibleWidth(this.state.lines[last.logicalLine]!.slice(last.startCol, last.startCol + last.length)),
+					boundary: true,
+				};
+			}
+			const visual = visualLines[index]!;
+			return {
+				row: index - this.scrollOffset + 1,
+				col: paddingX + visibleWidth(this.state.lines[position.line]!.slice(visual.startCol, position.col)),
+				boundary: true,
+			};
+		};
+		return { start: toCell(first), end: toCell(last) };
 	}
 
 	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
