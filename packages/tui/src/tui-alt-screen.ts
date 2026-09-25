@@ -5,6 +5,7 @@ import {
 	getAltScreenSearchMatchKey,
 } from "./alt-screen-search.ts";
 import { AltScreenFlashContainer } from "./components/alt-screen-flash.ts";
+import { Editor } from "./components/editor.ts";
 import { ScrollView } from "./components/scroll-view.ts";
 import { getKeybindings } from "./keybindings.ts";
 import { isKeyRelease } from "./keys.ts";
@@ -49,6 +50,7 @@ import {
 } from "./tui.ts";
 import {
 	extractAnsiCode,
+	extractSegments,
 	getGraphemeCellRange,
 	getOsc8LinkAtColumn,
 	getWordSegmenter,
@@ -225,6 +227,8 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private activeSearch?: ActiveSearch;
 	private pressedUrl?: string;
 	private selectionDragged = false;
+	private mouseSelectionEditor?: Editor;
+	private mirroredSelectionEditor?: Editor;
 	private mouseCapture?: TuiMouseDispatchTarget;
 	private mousePressTarget?: TuiMouseDispatchTarget;
 	private mousePressPoint?: { x: number; y: number };
@@ -657,6 +661,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 
 	private handleViewportInput(data: string): { consume?: boolean } | undefined {
 		if (data === FOCUS_OUT) {
+			this.mouseSelectionEditor = undefined;
 			const hadActiveSelection = this.selectionPressActive;
 			const hadNonEmptyActiveSelection = hadActiveSelection && this.getSelectionBounds() !== undefined;
 			this.selectionPressActive = false;
@@ -767,6 +772,10 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			if (!isRelease) this.scrollToBottom();
 			return { consume: true };
 		}
+		if (!isRelease && this.mirroredSelectionEditor === this.getFocusedComponent()) {
+			this.clearTextSelection();
+			this.requestRender();
+		}
 		return undefined;
 	}
 
@@ -865,6 +874,8 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	}
 
 	private clearTextSelection(): void {
+		this.mouseSelectionEditor = undefined;
+		this.mirroredSelectionEditor = undefined;
 		this.stopSelectionAutoScroll();
 		this.selectionPressActive = false;
 		this.selectionAnchor = undefined;
@@ -1312,6 +1323,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			if (!this.selectionAnchor) return;
 			this.updateSelectionFocus(point);
 			const isClick =
+				this.selectionGranularity === "character" &&
 				!this.selectionDragged &&
 				this.selectionAnchor.scrollView === point.scrollView &&
 				this.selectionAnchor.row === point.row &&
@@ -1342,6 +1354,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 					return;
 				}
 			}
+			this.mirrorEditorSelection(event);
 			if (this.copyOnSelect) void this.copySelectionToClipboard();
 			this.requestRender();
 			return;
@@ -1358,6 +1371,11 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		}
 		this.stopSelectionAutoScroll();
 		this.selectionPressActive = true;
+		this.mirroredSelectionEditor = undefined;
+		this.mouseSelectionEditor = this.getEditorAt(event.x, event.y)?.editor;
+		const focused = this.getFocusedComponent();
+		if (focused instanceof Editor) focused.clearMouseSelection();
+		if (this.mouseSelectionEditor !== focused) this.mouseSelectionEditor?.clearMouseSelection();
 		const scrollView =
 			!this.hasOverlay() && this.currentLayout
 				? getScrollViewsAt(this.currentLayout, event.x, event.y)[0]
@@ -1378,6 +1396,82 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 					Math.max(0, Math.min(this.terminal.columns - 1, event.x)),
 				);
 		this.requestRender();
+	}
+
+	private getEditorAt(
+		x: number,
+		y: number,
+		includeEndBoundary = false,
+	): { editor: Editor; x: number; y: number } | undefined {
+		if (!this.currentLayout || this.hasOverlay()) return undefined;
+		const findEditor = (
+			component: Component,
+			originX: number,
+			originY: number,
+			width: number,
+		): { editor: Editor; x: number; y: number } | undefined => {
+			if (component instanceof Editor) {
+				return component.isEditableMouseCell(y - originY, x - originX, includeEndBoundary)
+					? { editor: component, x: originX, y: originY }
+					: undefined;
+			}
+			const children =
+				component === this.implicitDocument
+					? this.children
+					: component instanceof Container && !getLayoutNode(component)
+						? component.children
+						: [];
+			let childY = originY;
+			for (const child of children) {
+				const height = child.render(width).length;
+				if (y >= childY && y < childY + height) return findEditor(child, originX, childY, width);
+				childY += height;
+			}
+			return undefined;
+		};
+		for (const box of getLayoutBoxesAt(this.currentLayout, x, y)) {
+			const target = findEditor(box.component, box.rect.x, box.rect.y - (box.lineOffset ?? 0), box.rect.width);
+			if (target) return target;
+		}
+		return undefined;
+	}
+
+	private mirrorEditorSelection(release: SgrMouseEvent): void {
+		const editor = this.mouseSelectionEditor;
+		this.mouseSelectionEditor = undefined;
+		const current = this.getEditorAt(release.x, release.y, true);
+		if (!editor || current?.editor !== editor || !this.currentLayout) return;
+		const selection = this.getSelectionBounds();
+		if (!selection) return;
+		const scrollView = selection.start.scrollView;
+		const scrollBox = scrollView ? getScrollViewBox(this.currentLayout, scrollView) : undefined;
+		if (scrollView && !scrollBox) return;
+		const toScreen = (point: SelectionPoint) => ({
+			x: point.col + (scrollBox?.rect.x ?? 0),
+			y: point.row - (scrollView?.scrollTop ?? 0) + (scrollBox?.rect.y ?? 0),
+			boundary: point.boundary,
+		});
+		const start = toScreen(selection.start);
+		const end = toScreen(selection.end);
+		const expanded = editor.setMouseSelection(
+			{ row: start.y - current.y, col: start.x - current.x, boundary: start.boundary },
+			{ row: end.y - current.y, col: end.x - current.x, boundary: end.boundary },
+			this.selectionAnchor === selection.start,
+		);
+		if (expanded === null) return;
+		this.mirroredSelectionEditor = editor;
+		this.setFocus(editor);
+		if (!expanded) return;
+		const toSelectionPoint = (point: { row: number; col: number; boundary?: boolean }): SelectionPoint => ({
+			row: point.row + current.y - (scrollBox?.rect.y ?? 0) + (scrollView?.scrollTop ?? 0),
+			col: point.col + current.x - (scrollBox?.rect.x ?? 0),
+			...(point.boundary ? { boundary: true } : {}),
+			...(scrollView ? { scrollView } : {}),
+		});
+		const expandedStart = toSelectionPoint(expanded.start);
+		const expandedEnd = toSelectionPoint(expanded.end);
+		this.selectionAnchor = this.selectionAnchor === selection.start ? expandedStart : expandedEnd;
+		this.selectionFocus = this.selectionAnchor === expandedStart ? expandedEnd : expandedStart;
 	}
 
 	private getSelectionBounds(): { start: SelectionPoint; end: SelectionPoint } | undefined {
@@ -1611,7 +1705,13 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			if (columns.end <= columns.start) return line;
 			const before = sliceByColumn(line, 0, columns.start, true);
 			const selected = sliceByColumn(line, columns.start, columns.end - columns.start, true);
-			const after = sliceByColumn(line, columns.end, Math.max(0, lineWidth - columns.end), true);
+			const { after } = extractSegments(
+				line,
+				columns.start,
+				columns.end,
+				Math.max(0, lineWidth - columns.end),
+				true,
+			);
 			return `${before}${this.applySelectionHighlight(selected)}${after}`;
 		});
 	}

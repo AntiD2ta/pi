@@ -2,8 +2,11 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import { Editor, type EditorTheme } from "../src/components/editor.ts";
 import { Input } from "../src/components/input.ts";
+import { ScrollView } from "../src/components/scroll-view.ts";
 import { SelectList, type SelectListTheme } from "../src/components/select-list.ts";
 import { SettingsList, type SettingsListTheme } from "../src/components/settings-list.ts";
+import { Text } from "../src/components/text.ts";
+import { VStack } from "../src/components/v-stack.ts";
 import { Container, type TuiMouseEvent, type TuiMouseEventType } from "../src/tui.ts";
 import { TuiAltScreen } from "../src/tui-alt-screen.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
@@ -221,7 +224,189 @@ describe("mouse-aware components", () => {
 		tui.stop();
 	});
 
-	it("selects and copies editor text on drag instead of moving the cursor", async () => {
+	it("deletes a multiline mouse drag released just past the last character", async () => {
+		const terminal = new VirtualTerminal(30, 8);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const editor = new Editor(tui, editorTheme);
+		editor.setText("asdas\nASDSaddasdadsaa");
+		tui.addChild(editor);
+		tui.start();
+		try {
+			await terminal.waitForRender();
+			const lines = terminal.getViewport();
+			const first = lines.findIndex((line) => line.includes("asdas")) + 1;
+			const last = lines.findIndex((line) => line.includes("ASDSaddasdadsaa")) + 1;
+			assert.ok(first > 0 && last > first);
+			terminal.sendInput(`\x1b[<0;1;${first}M`);
+			terminal.sendInput(`\x1b[<32;16;${last}M`);
+			terminal.sendInput(`\x1b[<0;16;${last}m`);
+			await terminal.waitForRender();
+			terminal.sendInput("\x7f");
+			await terminal.waitForRender();
+			assert.strictEqual(editor.getText(), "");
+		} finally {
+			tui.stop();
+		}
+	});
+
+	it("uses a multiline drag released in editor-row padding instead of the old cursor", async () => {
+		const terminal = new VirtualTerminal(30, 8);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const editor = new Editor(tui, editorTheme);
+		editor.setText("one\ntwo");
+		tui.addChild(editor);
+		tui.setFocus(editor);
+		tui.start();
+		try {
+			await terminal.waitForRender();
+			const lines = terminal.getViewport();
+			const first = lines.findIndex((line) => line.includes("one")) + 1;
+			const last = lines.findIndex((line) => line.includes("two")) + 1;
+			terminal.sendInput(`\x1b[<0;1;${first}M`);
+			terminal.sendInput(`\x1b[<32;8;${last}M`);
+			terminal.sendInput(`\x1b[<0;8;${last}m`);
+			await terminal.waitForRender();
+			terminal.sendInput("\x7f");
+			assert.strictEqual(editor.getText(), "");
+		} finally {
+			tui.stop();
+		}
+	});
+
+	it("deletes a reverse mouse selection pressed just after the last glyph", async () => {
+		const terminal = new VirtualTerminal(30, 8);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const editor = new Editor(tui, editorTheme);
+		editor.setText("first\nsecond\nthird");
+		const container = new Container();
+		container.addChild(editor);
+		tui.setLayoutRoot(
+			new VStack([
+				{
+					component: new ScrollView(new Text("transcript", 0, 0), { primary: true }),
+					basis: 0,
+					grow: 1,
+					minSize: 1,
+				},
+				{ component: new VStack([{ component: container, shrink: 1, minSize: 3 }]), basis: "auto", minSize: 1 },
+			]),
+		);
+		tui.setFocus(editor);
+		tui.start();
+		try {
+			await terminal.waitForRender();
+			const lines = terminal.getViewport();
+			const second = lines.findIndex((line) => line.includes("second")) + 1;
+			const third = lines.findIndex((line) => line.includes("third")) + 1;
+			assert.ok(second > 0 && third > second);
+			terminal.sendInput(`\x1b[<0;6;${third}M`);
+			terminal.sendInput(`\x1b[<32;1;${second}M`);
+			terminal.sendInput(`\x1b[<3;1;${second}m`);
+			await terminal.waitForRender();
+			assert.strictEqual(editor.getSelectedText(), "second\nthird");
+			terminal.sendInput("\x7f");
+			assert.strictEqual(editor.getText(), "first\n");
+		} finally {
+			tui.stop();
+		}
+	});
+
+	it("deletes a reverse drag from the middle line's end to the first glyph", async () => {
+		const terminal = new VirtualTerminal(30, 8);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const editor = new Editor(tui, editorTheme);
+		editor.setText("first\nsecond\nthird");
+		tui.addChild(editor);
+		tui.setFocus(editor);
+		tui.start();
+		try {
+			await terminal.waitForRender();
+			const lines = terminal.getViewport();
+			const first = lines.findIndex((line) => line.includes("first")) + 1;
+			const second = lines.findIndex((line) => line.includes("second")) + 1;
+			terminal.sendInput(`\x1b[<0;7;${second}M`);
+			terminal.sendInput(`\x1b[<32;1;${first}M`);
+			terminal.sendInput(`\x1b[<0;1;${first}m`);
+			await terminal.waitForRender();
+			assert.strictEqual(editor.getSelectedText(), "first\nsecond");
+			terminal.sendInput("\x7f");
+			assert.strictEqual(editor.getText(), "\nthird");
+		} finally {
+			tui.stop();
+		}
+	});
+
+	it("maps a reverse drag pressed after a wide grapheme to its full line", async () => {
+		const terminal = new VirtualTerminal(30, 8);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const editor = new Editor(tui, editorTheme);
+		editor.setText("first\n你😀");
+		tui.addChild(editor);
+		tui.setFocus(editor);
+		tui.start();
+		try {
+			await terminal.waitForRender();
+			const lines = terminal.getViewport();
+			const first = lines.findIndex((line) => line.includes("first")) + 1;
+			const last = lines.findIndex((line) => line.includes("你😀")) + 1;
+			terminal.sendInput(`\x1b[<0;5;${last}M`);
+			terminal.sendInput(`\x1b[<32;1;${first}M`);
+			terminal.sendInput(`\x1b[<0;1;${first}m`);
+			await terminal.waitForRender();
+			assert.strictEqual(editor.getSelectedText(), "first\n你😀");
+			terminal.sendInput("\x7f");
+			assert.strictEqual(editor.getText(), "");
+		} finally {
+			tui.stop();
+		}
+	});
+
+	it("keeps drags started farther into editor-row padding screen-only", async () => {
+		const terminal = new VirtualTerminal(30, 8);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const editor = new Editor(tui, editorTheme);
+		editor.setText("first\nsecond\nthird");
+		tui.addChild(editor);
+		tui.setFocus(editor);
+		tui.start();
+		try {
+			await terminal.waitForRender();
+			const lines = terminal.getViewport();
+			const second = lines.findIndex((line) => line.includes("second")) + 1;
+			const third = lines.findIndex((line) => line.includes("third")) + 1;
+			terminal.sendInput(`\x1b[<0;9;${third}M`);
+			terminal.sendInput(`\x1b[<32;1;${second}M`);
+			terminal.sendInput(`\x1b[<0;1;${second}m`);
+			await terminal.waitForRender();
+			assert.strictEqual(editor.getSelectedText(), undefined);
+			assert.strictEqual(editor.getText(), "first\nsecond\nthird");
+		} finally {
+			tui.stop();
+		}
+	});
+
+	it("deletes through an empty editor row without editing transcript text", async () => {
+		const terminal = new VirtualTerminal(30, 8);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const editor = new Editor(tui, editorTheme);
+		editor.setText("one\n");
+		tui.addChild(editor);
+		tui.start();
+		try {
+			await terminal.waitForRender();
+			const first = terminal.getViewport().findIndex((line) => line.includes("one")) + 1;
+			terminal.sendInput(`\x1b[<0;1;${first}M`);
+			terminal.sendInput(`\x1b[<32;6;${first + 1}M`);
+			terminal.sendInput(`\x1b[<0;6;${first + 1}m`);
+			await terminal.waitForRender();
+			terminal.sendInput("\x7f");
+			assert.strictEqual(editor.getText(), "");
+		} finally {
+			tui.stop();
+		}
+	});
+
+	it("selects and copies editor text on drag while making it editable", async () => {
 		const terminal = new VirtualTerminal(20, 6);
 		const copied: string[] = [];
 		const tui = new TuiAltScreen(terminal, undefined, undefined, {
@@ -235,7 +420,6 @@ describe("mouse-aware components", () => {
 		tui.addChild(editor);
 		tui.start();
 		await terminal.waitForRender();
-		const cursorBefore = editor.getCursor();
 
 		terminal.sendInput("\x1b[<0;1;2M");
 		terminal.sendInput("\x1b[<32;5;2M");
@@ -243,7 +427,8 @@ describe("mouse-aware components", () => {
 		await terminal.waitForRender();
 
 		assert.deepStrictEqual(copied, ["hello"]);
-		assert.deepStrictEqual(editor.getCursor(), cursorBefore);
+		editor.handleInput("\x7f");
+		assert.strictEqual(editor.getText(), " world");
 		tui.stop();
 	});
 });

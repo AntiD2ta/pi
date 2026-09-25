@@ -14,10 +14,69 @@ describe("KeybindingsManager", () => {
 	it("binds modified and unmodified editor viewport navigation", () => {
 		const keybindings = new KeybindingsManager(TUI_KEYBINDINGS);
 
-		assert.deepStrictEqual(keybindings.getKeys("tui.editor.cursorLineStart"), ["home", "ctrl+home", "ctrl+a"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.cursorLineStart"), ["home", "ctrl+home"]);
 		assert.deepStrictEqual(keybindings.getKeys("tui.editor.cursorLineEnd"), ["end", "ctrl+end", "ctrl+e"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectAll"), ["ctrl+a"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.input.cursorLineStart"), ["ctrl+a"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectLeft"), ["shift+left"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectRight"), ["shift+right"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectUp"), ["shift+up"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectDown"), ["shift+down"]);
 		assert.deepStrictEqual(keybindings.getKeys("tui.editor.pageUp"), ["pageUp", "ctrl+pageUp"]);
 		assert.deepStrictEqual(keybindings.getKeys("tui.editor.pageDown"), ["pageDown", "ctrl+pageDown"]);
+	});
+
+	it("registers every range-selection default and recognizes modified navigation sequences", () => {
+		const kb = new KeybindingsManager(TUI_KEYBINDINGS);
+		for (const [action, keys, sequence] of [
+			["selectLeft", ["shift+left"], "\x1b[1;2D"],
+			["selectRight", ["shift+right"], "\x1b[1;2C"],
+			["selectUp", ["shift+up"], "\x1b[1;2A"],
+			["selectDown", ["shift+down"], "\x1b[1;2B"],
+			["selectWordLeft", ["ctrl+shift+left", "alt+shift+left"], "\x1b[1;6D"],
+			["selectWordRight", ["ctrl+shift+right", "alt+shift+right"], "\x1b[1;4C"],
+			["selectLineStart", ["shift+home"], "\x1b[1;2H"],
+			["selectLineEnd", ["shift+end"], "\x1b[1;2F"],
+			["selectPageUp", ["shift+pageUp"], "\x1b[5;2~"],
+			["selectPageDown", ["shift+pageDown"], "\x1b[6;2~"],
+			["selectDocumentStart", ["ctrl+shift+home"], "\x1b[1;6H"],
+			["selectDocumentEnd", ["ctrl+shift+end"], "\x1b[1;6F"],
+			["selectAll", ["ctrl+a"], "\x01"],
+		] as const) {
+			const id = `tui.editor.${action}` as keyof typeof TUI_KEYBINDINGS;
+			assert.deepStrictEqual(kb.getKeys(id), keys);
+			assert.equal(kb.matches(sequence, id), true, id);
+		}
+		assert.equal(kb.matches("\x1b[1;4D", "tui.editor.selectWordLeft"), true);
+		assert.equal(kb.matches("\x1b[5~", "tui.editor.selectPageUp"), false);
+		assert.deepStrictEqual(kb.getConflicts(), []);
+	});
+
+	it("keeps transcript and editor bindings independent when a user creates a routing collision", () => {
+		const kb = new KeybindingsManager(TUI_KEYBINDINGS, {
+			"tui.altScreen.pageUp": "shift+pageUp",
+			"tui.editor.selectPageUp": "shift+pageUp",
+		});
+		assert.deepStrictEqual(kb.getConflicts(), [
+			{
+				key: "shift+pageUp",
+				keybindings: ["tui.altScreen.pageUp", "tui.editor.selectPageUp"],
+			},
+		]);
+		assert.equal(kb.matches("\x1b[5;2~", "tui.altScreen.pageUp"), true);
+		assert.equal(kb.matches("\x1b[5;2~", "tui.editor.selectPageUp"), true);
+		assert.deepStrictEqual(kb.getKeys("tui.editor.pageUp"), ["pageUp", "ctrl+pageUp"]);
+	});
+
+	it("allows overriding the keyboard selection tracer bindings", () => {
+		const keybindings = new KeybindingsManager(TUI_KEYBINDINGS, {
+			"tui.editor.selectLeft": "alt+shift+left",
+			"tui.editor.selectAll": "ctrl+shift+a",
+		});
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectLeft"), ["alt+shift+left"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.editor.selectAll"), ["ctrl+shift+a"]);
+		assert.strictEqual(keybindings.matches("\x01", "tui.editor.selectAll"), false);
+		assert.strictEqual(keybindings.matches("\x01", "tui.input.cursorLineStart"), true);
 	});
 
 	it("leaves dedicated prompt history navigation unbound by default", () => {

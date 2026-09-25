@@ -6620,6 +6620,17 @@ export class InteractiveMode {
 	private async handleCopyCommand(
 		options: { flashConfirmation?: boolean; preferSelection?: boolean } = {},
 	): Promise<void> {
+		const selectedText = options.preferSelection ? this.editor?.getSelectedText?.() : undefined;
+		if (selectedText !== undefined) {
+			try {
+				await copyToClipboard(selectedText);
+				if (options.flashConfirmation && this.ui instanceof TuiAltScreen) this.ui.flash("Copied!");
+				else this.showStatus("Copied editor selection to clipboard");
+			} catch (error) {
+				this.showError(error instanceof Error ? error.message : String(error));
+			}
+			return;
+		}
 		if (
 			options.preferSelection &&
 			this.ui instanceof TuiAltScreen &&

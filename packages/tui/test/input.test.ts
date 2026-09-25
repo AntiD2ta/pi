@@ -34,6 +34,15 @@ describe("Input component", () => {
 		assert.strictEqual(input.getValue(), "\\x");
 	});
 
+	it("keeps Ctrl+A as line start in single-line inputs", () => {
+		const input = new Input();
+		input.setValue("hello world");
+		input.handleInput("\x05"); // Ctrl+E
+		input.handleInput("\x01"); // Ctrl+A
+		input.handleInput("X");
+		assert.strictEqual(input.getValue(), "Xhello world");
+	});
+
 	describe("render", () => {
 		it("supports a custom prompt and styled placeholder", () => {
 			const input = new Input({

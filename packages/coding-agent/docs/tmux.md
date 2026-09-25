@@ -40,7 +40,7 @@ Start Pi inside the new tmux session and check that:
 2. `Enter` submits the prompt.
 3. `Alt+Enter` queues a follow-up on macOS and Linux. Windows and WSL use `Ctrl+Q` by default.
 
-If these keys still behave like plain `Enter`, verify that the terminal outside tmux can report modified keys. See [Configure your terminal](terminal-setup.md).
+If these keys still behave like plain `Enter`, verify that the terminal outside tmux can report modified keys. The multiline editor also uses modified arrows, Home/End, and PageUp/PageDown for [range selection](keybindings.md#range-selection). tmux can forward modifier information only when the underlying terminal reports it; Pi does not add fallback shortcuts for combinations that cannot be distinguished. See [Configure your terminal](terminal-setup.md).
 
 ## Use tmux 3.2 through 3.4
 

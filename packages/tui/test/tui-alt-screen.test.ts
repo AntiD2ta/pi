@@ -5,6 +5,7 @@ import {
 	AltScreenSearchIndex,
 	findAltScreenSearchMatches,
 } from "../src/alt-screen-search.ts";
+import { Editor } from "../src/components/editor.ts";
 import { HStack } from "../src/components/h-stack.ts";
 import { Image } from "../src/components/image.ts";
 import { MouseRegion } from "../src/components/mouse-region.ts";
@@ -20,9 +21,10 @@ import {
 	resetCapabilitiesCache,
 	setCapabilities,
 } from "../src/terminal-image.ts";
-import type { TuiMouseEvent } from "../src/tui.ts";
+import { Container, type TuiMouseEvent } from "../src/tui.ts";
 import { TuiAltScreen } from "../src/tui-alt-screen.ts";
 import { stripTerminalSequences, visibleWidth } from "../src/utils.ts";
+import { defaultEditorTheme } from "./test-themes.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
@@ -1251,6 +1253,600 @@ describe("TuiAltScreen", () => {
 		await terminal.waitForRender();
 		assert.deepStrictEqual(openedUrls, [url, belUrl, emojiUrl]);
 
+		tui.stop();
+	});
+
+	it("makes a contained double-clicked editor word editable without losing screen copy", async () => {
+		const terminal = new VirtualTerminal(30, 24);
+		const copied: string[] = [];
+		const tui = new TuiAltScreen(terminal, undefined, undefined, {
+			copySelection: async (text) => {
+				copied.push(text);
+				return true;
+			},
+		});
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText("foo bar");
+		tui.setLayoutRoot(new VStack([new Text("transcript", 0, 0), input]));
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const row = terminal.getViewport().findIndex((line) => line.includes("foo bar")) + 1;
+		assert.ok(row > 0);
+		for (let index = 0; index < 2; index++) {
+			terminal.sendInput(`\x1b[<0;5;${row}M`);
+			terminal.sendInput(`\x1b[<0;5;${row}m`);
+		}
+		await terminal.waitForRender();
+		assert.deepStrictEqual(copied, ["bar"]);
+		assert.strictEqual(tui.hasActiveSelection(), true);
+		input.handleInput("X");
+		assert.strictEqual(input.getText(), "foo X");
+		tui.stop();
+	});
+
+	it("highlights only the double-clicked word and clears screen selection after deletion", async () => {
+		const terminal = new RecordingTerminal(40, 24);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText("Inspect PI-66 visually");
+		tui.setLayoutRoot(input);
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const row = terminal.getViewport().findIndex((line) => line.includes("Inspect PI-66 visually")) + 1;
+		assert.ok(row > 0);
+		for (let index = 0; index < 2; index++) {
+			terminal.sendInput(`\x1b[<0;3;${row}M`);
+			terminal.sendInput(`\x1b[<0;3;${row}m`);
+		}
+		await terminal.waitForRender();
+		const selectedWrite = terminal.events.filter((event) => event.type === "write").at(-1);
+		assert.ok(selectedWrite?.type === "write");
+		assert.ok(selectedWrite.data.includes("Inspect\x1b[27m"), selectedWrite.data);
+		assert.ok(!selectedWrite.data.includes("\x1b[7m PI-66"), selectedWrite.data);
+
+		terminal.sendInput("\x7f");
+		await terminal.waitForRender();
+		assert.strictEqual(input.getText(), " PI-66 visually");
+		assert.strictEqual(tui.hasActiveSelection(), false);
+		const deletedWrite = terminal.events.filter((event) => event.type === "write").at(-1);
+		assert.ok(deletedWrite?.type === "write");
+		assert.ok(!deletedWrite.data.includes("\x1b[7mPI-66"), deletedWrite.data);
+		tui.stop();
+	});
+
+	it("mirrors selections through the application's editor container", async () => {
+		const terminal = new VirtualTerminal(80, 32);
+		const copied: string[] = [];
+		const tui = new TuiAltScreen(terminal, undefined, undefined, {
+			copySelection: async (text) => {
+				copied.push(text);
+				return true;
+			},
+		});
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText("alpha beta gamma");
+		const dock = new Container();
+		dock.addChild(new Text("header", 0, 0));
+		dock.addChild(input);
+		tui.setLayoutRoot(new VStack([new Text("transcript", 0, 0), dock]));
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const row = terminal.getViewport().findIndex((line) => line.includes("alpha beta gamma")) + 1;
+		for (let index = 0; index < 2; index++) {
+			terminal.sendInput(`\x1b[<0;8;${row}M`);
+			terminal.sendInput(`\x1b[<0;8;${row}m`);
+		}
+		await terminal.waitForRender();
+		assert.deepStrictEqual(copied, ["beta"]);
+		input.handleInput("\x7f");
+		assert.strictEqual(input.getText(), "alpha  gamma");
+		tui.stop();
+	});
+
+	it("double-clicks a word after the cursor moves inside that word", async () => {
+		const terminal = new VirtualTerminal(80, 32);
+		const copied: string[] = [];
+		const tui = new TuiAltScreen(terminal, undefined, undefined, {
+			copySelection: async (text) => {
+				copied.push(text);
+				return true;
+			},
+		});
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText("alpha beta gamma");
+		tui.setLayoutRoot(input);
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const row = terminal.getViewport().findIndex((line) => line.includes("alpha beta gamma")) + 1;
+		for (let index = 0; index < 2; index++) {
+			terminal.sendInput(`\x1b[<0;8;${row}M`);
+			terminal.sendInput(`\x1b[<0;8;${row}m`);
+		}
+		await terminal.waitForRender();
+		assert.deepStrictEqual(copied, ["beta"]);
+		input.handleInput("\x7f");
+		assert.strictEqual(input.getText(), "alpha  gamma");
+		tui.stop();
+	});
+
+	it("mirrors whitespace and joined path words using the fullscreen boundaries", async () => {
+		for (const { text, column, expected } of [
+			{ text: "foo  bar", column: 5, expected: "foobar" },
+			{ text: "one/two-three", column: 7, expected: "" },
+		]) {
+			const terminal = new VirtualTerminal(30, 24);
+			const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+			const input = new Editor(tui, defaultEditorTheme);
+			input.setText(text);
+			tui.setLayoutRoot(input);
+			tui.setFocus(input);
+			tui.start();
+			await terminal.waitForRender();
+			const row = terminal.getViewport().findIndex((line) => line.includes(text)) + 1;
+			for (let index = 0; index < 2; index++) {
+				terminal.sendInput(`\x1b[<0;${column};${row}M`);
+				terminal.sendInput(`\x1b[<0;${column};${row}m`);
+			}
+			await terminal.waitForRender();
+			input.handleInput("\x7f");
+			assert.strictEqual(input.getText(), expected);
+			tui.stop();
+		}
+	});
+
+	it("extends a keyboard selection through more than two editor lines", async () => {
+		const terminal = new VirtualTerminal(30, 24);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText("one\ntwo\nthree\nfour");
+		tui.setLayoutRoot(input);
+		tui.setFocus(input);
+		tui.start();
+		try {
+			await terminal.waitForRender();
+			for (let index = 0; index < 3; index++) terminal.sendInput("\x1b[1;2A");
+			await terminal.waitForRender();
+			assert.strictEqual(input.getSelectedText(), "\ntwo\nthree\nfour");
+			terminal.sendInput("\x1b[1;2A");
+			assert.strictEqual(input.getSelectedText(), "one\ntwo\nthree\nfour");
+			terminal.sendInput("\x7f");
+			assert.strictEqual(input.getText(), "");
+		} finally {
+			tui.stop();
+		}
+	});
+
+	it("extends downward to the last row's end after reaching it", async () => {
+		const terminal = new VirtualTerminal(30, 24);
+		const tui = new TuiAltScreen(terminal);
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText("one\ntwo\nthree\nfour");
+		tui.setLayoutRoot(input);
+		tui.setFocus(input);
+		tui.start();
+		try {
+			await terminal.waitForRender();
+			terminal.sendInput("\x01");
+			terminal.sendInput("\x1b[D");
+			terminal.sendInput("\x1b[1;2B");
+			terminal.sendInput("\x1b[1;2B");
+			terminal.sendInput("\x1b[1;2B");
+			terminal.sendInput("\x1b[1;2B");
+			assert.strictEqual(input.getSelectedText(), "one\ntwo\nthree\nfour");
+		} finally {
+			tui.stop();
+		}
+	});
+
+	it("edits forward and reverse drags across wrapped and logical lines", async () => {
+		for (const reverse of [false, true]) {
+			const terminal = new VirtualTerminal(12, 24);
+			const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+			const input = new Editor(tui, defaultEditorTheme);
+			input.setText("abcdefghijklmno\nsecond");
+			tui.setLayoutRoot(input);
+			tui.setFocus(input);
+			tui.start();
+			await terminal.waitForRender();
+			const viewport = terminal.getViewport();
+			const first = viewport.findIndex((line) => line.includes("abcdefghijk")) + 1;
+			const last = viewport.findIndex((line) => line.includes("second")) + 1;
+			assert.ok(first > 0 && last > first);
+			const start = reverse ? { x: 4, y: last } : { x: 3, y: first };
+			const end = reverse ? { x: 3, y: first } : { x: 4, y: last };
+			terminal.sendInput(`\x1b[<0;${start.x};${start.y}M`);
+			terminal.sendInput(`\x1b[<32;${end.x};${end.y}M`);
+			terminal.sendInput(`\x1b[<0;${end.x};${end.y}m`);
+			await terminal.waitForRender();
+			input.handleInput("Z");
+			assert.strictEqual(input.getText(), "abZnd");
+			tui.stop();
+		}
+	});
+
+	it("triple-clicks an editor line without consuming its newline", async () => {
+		const terminal = new VirtualTerminal(30, 24);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText("first line\nsecond");
+		tui.setLayoutRoot(input);
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const row = terminal.getViewport().findIndex((line) => line.includes("first line")) + 1;
+		for (let index = 0; index < 3; index++) {
+			terminal.sendInput(`\x1b[<0;2;${row}M`);
+			terminal.sendInput(`\x1b[<0;2;${row}m`);
+		}
+		await terminal.waitForRender();
+		input.handleInput("\x7f");
+		assert.strictEqual(input.getText(), "\nsecond");
+		tui.stop();
+	});
+
+	it("does not mirror a horizontal sibling's drag into the editor", async () => {
+		const terminal = new VirtualTerminal(20, 24);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText("abcdefghijklmnopqrst");
+		tui.setLayoutRoot(
+			new HStack([
+				{ component: input, basis: 10 },
+				{ component: new Text("other\ncontent", 0, 0), basis: 10 },
+			]),
+		);
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const row = terminal.getViewport().findIndex((line) => line.includes("content")) + 1;
+		terminal.sendInput(`\x1b[<0;12;${row}M`);
+		terminal.sendInput(`\x1b[<32;15;${row}M`);
+		terminal.sendInput(`\x1b[<0;15;${row}m`);
+		await terminal.waitForRender();
+		input.handleInput("X");
+		assert.strictEqual(input.getText(), "abcdefghijklmnopqrstX");
+		tui.stop();
+	});
+
+	it("does not turn a drag into an adjacent editor's blank row into an edit", async () => {
+		const terminal = new VirtualTerminal(20, 24);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const first = new Editor(tui, defaultEditorTheme);
+		const second = new Editor(tui, defaultEditorTheme);
+		first.setText("left");
+		second.setText("right");
+		tui.setLayoutRoot(
+			new HStack([
+				{ component: first, basis: 10 },
+				{ component: second, basis: 10 },
+			]),
+		);
+		tui.setFocus(first);
+		tui.start();
+		try {
+			await terminal.waitForRender();
+			const row = terminal.getViewport().findIndex((line) => line.includes("left")) + 1;
+			terminal.sendInput(`\x1b[<0;1;${row}M`);
+			terminal.sendInput(`\x1b[<32;19;${row}M`);
+			terminal.sendInput(`\x1b[<0;19;${row}m`);
+			await terminal.waitForRender();
+			assert.strictEqual(first.getSelectedText(), undefined);
+			assert.strictEqual(second.getSelectedText(), undefined);
+			assert.strictEqual(first.getText(), "left");
+			assert.strictEqual(second.getText(), "right");
+		} finally {
+			tui.stop();
+		}
+	});
+
+	it("keeps transcript and cross-boundary drags screen-only", async () => {
+		const terminal = new VirtualTerminal(30, 24);
+		const copied: string[] = [];
+		const tui = new TuiAltScreen(terminal, undefined, undefined, {
+			copySelection: async (text) => {
+				copied.push(text);
+				return true;
+			},
+		});
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText("edit me");
+		tui.setLayoutRoot(new VStack([new Text("transcript", 0, 0), input]));
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const row = terminal.getViewport().findIndex((line) => line.includes("edit me")) + 1;
+		terminal.sendInput(`\x1b[<0;1;${row}M`);
+		terminal.sendInput("\x1b[<32;4;1M");
+		terminal.sendInput("\x1b[<0;4;1m");
+		await terminal.waitForRender();
+		assert.ok(copied.length > 0);
+		input.handleInput("X");
+		assert.strictEqual(input.getText(), "edit meX");
+		for (let index = 0; index < 2; index++) {
+			terminal.sendInput(`\x1b[<0;2;${row}M`);
+			terminal.sendInput(`\x1b[<0;2;${row}m`);
+		}
+		await terminal.waitForRender();
+		terminal.sendInput("\x1b[<0;1;1M");
+		terminal.sendInput("\x1b[<32;4;1M");
+		terminal.sendInput("\x1b[<0;4;1m");
+		await terminal.waitForRender();
+		assert.ok(copied.some((text) => text === "tran"));
+		input.handleInput("Y");
+		assert.strictEqual(input.getText(), "editY meX");
+		tui.stop();
+	});
+
+	it("cancels an unfinished editor drag on focus loss", async () => {
+		const terminal = new VirtualTerminal(30, 24);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText("alpha beta");
+		tui.setLayoutRoot(input);
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const row = terminal.getViewport().findIndex((line) => line.includes("alpha beta")) + 1;
+		terminal.sendInput(`\x1b[<0;1;${row}M`);
+		terminal.sendInput(`\x1b[<32;4;${row}M`);
+		terminal.sendInput("\x1b[O");
+		terminal.sendInput(`\x1b[<0;4;${row}m`);
+		await terminal.waitForRender();
+		input.handleInput("X");
+		assert.strictEqual(input.getText(), "alpha betaX");
+		tui.stop();
+	});
+
+	it("routes keyboard editing to an editor selected by mouse drag", async () => {
+		const terminal = new VirtualTerminal(30, 24);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const first = new Editor(tui, defaultEditorTheme);
+		const second = new Editor(tui, defaultEditorTheme);
+		first.setText("other");
+		second.setText("select me");
+		tui.setLayoutRoot(new VStack([first, second]));
+		tui.setFocus(first);
+		tui.start();
+		await terminal.waitForRender();
+		const row = terminal.getViewport().findIndex((line) => line.includes("select me")) + 1;
+		terminal.sendInput(`\x1b[<0;1;${row}M`);
+		terminal.sendInput(`\x1b[<32;6;${row}M`);
+		terminal.sendInput(`\x1b[<0;6;${row}m`);
+		await terminal.waitForRender();
+		terminal.sendInput("\x7f");
+		await terminal.waitForRender();
+		assert.strictEqual(tui.getFocusedComponent(), second);
+		assert.strictEqual(first.getText(), "other");
+		assert.strictEqual(second.getText(), " me");
+		tui.stop();
+	});
+
+	it("does not edit either editor after a cross-editor drag", async () => {
+		const terminal = new VirtualTerminal(30, 24);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const first = new Editor(tui, defaultEditorTheme);
+		const second = new Editor(tui, defaultEditorTheme);
+		first.setText("first");
+		second.setText("second");
+		tui.setLayoutRoot(new VStack([first, second]));
+		tui.setFocus(first);
+		tui.start();
+		await terminal.waitForRender();
+		const screen = terminal.getViewport();
+		const firstRow = screen.findIndex((line) => line.includes("first")) + 1;
+		const secondRow = screen.findIndex((line) => line.includes("second")) + 1;
+		terminal.sendInput(`\x1b[<0;2;${firstRow}M`);
+		terminal.sendInput(`\x1b[<32;3;${secondRow}M`);
+		terminal.sendInput(`\x1b[<0;3;${secondRow}m`);
+		await terminal.waitForRender();
+		first.handleInput("X");
+		assert.strictEqual(first.getText(), "firstX");
+		assert.strictEqual(second.getText(), "second");
+		tui.stop();
+	});
+
+	it("expands a partial wrapped paste marker on screen and in editor", async () => {
+		const terminal = new VirtualTerminal(12, 24);
+		const copied: string[] = [];
+		const tui = new TuiAltScreen(terminal, undefined, undefined, {
+			copySelection: async (text) => {
+				copied.push(text);
+				return true;
+			},
+		});
+		const input = new Editor(tui, defaultEditorTheme);
+		const paste = "p".repeat(1001);
+		input.handleInput(`\x1b[200~${paste}\x1b[201~`);
+		const marker = input.getText();
+		tui.setLayoutRoot(input);
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const row = terminal.getViewport().findIndex((line) => line.includes("[paste #1")) + 1;
+		assert.ok(row > 0);
+		terminal.sendInput(`\x1b[<0;3;${row}M`);
+		terminal.sendInput(`\x1b[<32;5;${row}M`);
+		terminal.sendInput(`\x1b[<0;5;${row}m`);
+		await terminal.waitForRender();
+		assert.strictEqual(copied.join("").replaceAll("\n", ""), marker.replace("#1 ", "#1"));
+		input.handleInput("\x7f");
+		assert.strictEqual(input.getText(), "");
+		input.handleInput("\x1b[45;5u");
+		assert.strictEqual(input.getExpandedText(), paste);
+		tui.stop();
+	});
+
+	it("expands a reverse drag into a wrapped marker with the active endpoint at its start", async () => {
+		const terminal = new VirtualTerminal(12, 24);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText("pre");
+		input.handleInput(`\x1b[200~${"p".repeat(1001)}\x1b[201~`);
+		input.handleInput("post");
+		tui.setLayoutRoot(input);
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const viewport = terminal.getViewport();
+		const markerRow = viewport.findIndex((line) => line.includes("[paste #1")) + 1;
+		const suffixRow = viewport.findIndex((line) => line.includes("post")) + 1;
+		assert.ok(markerRow > 0 && suffixRow > markerRow);
+		terminal.sendInput(`\x1b[<0;2;${suffixRow}M`);
+		terminal.sendInput(`\x1b[<32;7;${markerRow}M`);
+		terminal.sendInput(`\x1b[<0;7;${markerRow}m`);
+		await terminal.waitForRender();
+		assert.deepStrictEqual(input.getCursor(), { line: 0, col: 3 });
+		input.handleInput("\x7f");
+		assert.strictEqual(input.getText(), "prest");
+		tui.stop();
+	});
+
+	it("clips an atomic marker's screen selection to visible editor rows", async () => {
+		const terminal = new VirtualTerminal(8, 16);
+		const copied: string[] = [];
+		const tui = new TuiAltScreen(terminal, undefined, undefined, {
+			copySelection: async (text) => {
+				copied.push(text);
+				return true;
+			},
+		});
+		const input = new Editor(tui, defaultEditorTheme);
+		input.handleInput(`\x1b[200~${"p".repeat(1001)}\x1b[201~`);
+		input.insertTextAtCursor("\nX\nY\nZ");
+		tui.setLayoutRoot(new VStack([new Text("TRANSCRIPT", 0, 0), input]));
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const viewport = terminal.getViewport();
+		const row = viewport.findIndex((line) => line.includes("1001")) + 1;
+		assert.ok(row > 0, JSON.stringify(viewport));
+		terminal.sendInput(`\x1b[<0;2;${row}M`);
+		terminal.sendInput(`\x1b[<32;4;${row}M`);
+		terminal.sendInput(`\x1b[<0;4;${row}m`);
+		await terminal.waitForRender();
+		assert.ok(copied.length > 0);
+		assert.ok(!copied[0]!.includes("TRANSCRIPT"), JSON.stringify(copied));
+		assert.ok(!copied[0]!.includes("─"), JSON.stringify(copied));
+		input.handleInput("\x7f");
+		assert.strictEqual(input.getExpandedText(), "\nX\nY\nZ");
+		tui.stop();
+	});
+
+	it("maps padded wide and combining cells to complete graphemes", async () => {
+		const terminal = new VirtualTerminal(20, 24);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const input = new Editor(tui, defaultEditorTheme, { paddingX: 2 });
+		input.setText("a你e\u0301😀z");
+		tui.setLayoutRoot(input);
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const row = terminal.getViewport().findIndex((line) => line.includes("a你e\u0301😀z")) + 1;
+		assert.ok(row > 0);
+		terminal.sendInput(`\x1b[<0;5;${row}M`);
+		terminal.sendInput(`\x1b[<32;8;${row}M`);
+		terminal.sendInput(`\x1b[<0;8;${row}m`);
+		await terminal.waitForRender();
+		input.handleInput("X");
+		assert.strictEqual(input.getText(), "aXz");
+		tui.stop();
+	});
+
+	it("leaves drags from editor padding screen-only", async () => {
+		const terminal = new VirtualTerminal(20, 24);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const input = new Editor(tui, defaultEditorTheme, { paddingX: 2 });
+		input.setText("hello world");
+		tui.setLayoutRoot(input);
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const row = terminal.getViewport().findIndex((line) => line.includes("hello world")) + 1;
+		terminal.sendInput(`\x1b[<0;1;${row}M`);
+		terminal.sendInput(`\x1b[<32;6;${row}M`);
+		terminal.sendInput(`\x1b[<0;6;${row}m`);
+		await terminal.waitForRender();
+		input.handleInput("X");
+		assert.strictEqual(input.getText(), "hello worldX");
+		tui.stop();
+	});
+
+	it("uses the current editor origin when its enclosing scroll view moves during a drag", async () => {
+		const terminal = new VirtualTerminal(20, 16);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText("aa\nbb\ncc\ndd\nee\nff\ngg\nhh\nii\njj");
+		const scroll = new ScrollView(input, { primary: true });
+		tui.setLayoutRoot(new VStack([{ component: scroll, basis: 4 }]));
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const startRow = terminal.getViewport().findIndex((line) => line.startsWith("gg")) + 1;
+		assert.ok(startRow > 0);
+		terminal.sendInput(`\x1b[<0;1;${startRow}M`);
+		scroll.scrollBy(1);
+		tui.requestRender();
+		await terminal.waitForRender();
+		const endRow = terminal.getViewport().findIndex((line) => line.startsWith("hh")) + 1;
+		assert.ok(endRow > 0);
+		terminal.sendInput(`\x1b[<32;2;${endRow}M`);
+		terminal.sendInput(`\x1b[<0;2;${endRow}m`);
+		await terminal.waitForRender();
+		input.handleInput("X");
+		assert.strictEqual(input.getLines()[6], "X");
+		assert.strictEqual(input.getLines()[7], "ii");
+		tui.stop();
+	});
+
+	it("maps scrolled editor rows to their logical lines", async () => {
+		const terminal = new VirtualTerminal(24, 16);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText(Array.from({ length: 10 }, (_, i) => `line ${i}`).join("\n"));
+		tui.setLayoutRoot(input);
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const row = terminal.getViewport().findIndex((line) => line.includes("line 7")) + 1;
+		assert.ok(row > 0);
+		terminal.sendInput(`\x1b[<0;1;${row}M`);
+		terminal.sendInput(`\x1b[<32;6;${row}M`);
+		terminal.sendInput(`\x1b[<0;6;${row}m`);
+		await terminal.waitForRender();
+		input.handleInput("X");
+		assert.strictEqual(input.getLines()[7], "X");
+		assert.strictEqual(input.getLines()[6], "line 6");
+		tui.stop();
+	});
+
+	it("extends a mouse selection from the keyboard and clears it on a plain click", async () => {
+		const terminal = new VirtualTerminal(30, 24);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, { copyOnSelect: false });
+		const input = new Editor(tui, defaultEditorTheme);
+		input.setText("abc def ghi");
+		tui.setLayoutRoot(input);
+		tui.setFocus(input);
+		tui.start();
+		await terminal.waitForRender();
+		const row = terminal.getViewport().findIndex((line) => line.includes("abc def ghi")) + 1;
+		for (let index = 0; index < 2; index++) {
+			terminal.sendInput(`\x1b[<0;5;${row}M`);
+			terminal.sendInput(`\x1b[<0;5;${row}m`);
+		}
+		await terminal.waitForRender();
+		input.handleInput("\x1b[1;2C");
+		input.handleInput("X");
+		assert.strictEqual(input.getText(), "abc Xghi");
+		input.handleInput("\x01");
+		terminal.sendInput(`\x1b[<0;3;${row}M`);
+		terminal.sendInput(`\x1b[<0;3;${row}m`);
+		await terminal.waitForRender();
+		input.handleInput("Y");
+		assert.strictEqual(input.getText(), "abYc Xghi");
 		tui.stop();
 	});
 

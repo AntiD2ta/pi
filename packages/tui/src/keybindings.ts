@@ -12,6 +12,19 @@ export interface Keybindings {
 	"tui.editor.historyNext": true;
 	"tui.editor.cursorLeft": true;
 	"tui.editor.cursorRight": true;
+	"tui.editor.selectLeft": true;
+	"tui.editor.selectRight": true;
+	"tui.editor.selectUp": true;
+	"tui.editor.selectDown": true;
+	"tui.editor.selectWordLeft": true;
+	"tui.editor.selectWordRight": true;
+	"tui.editor.selectLineStart": true;
+	"tui.editor.selectLineEnd": true;
+	"tui.editor.selectPageUp": true;
+	"tui.editor.selectPageDown": true;
+	"tui.editor.selectDocumentStart": true;
+	"tui.editor.selectDocumentEnd": true;
+	"tui.editor.selectAll": true;
 	"tui.editor.cursorWordLeft": true;
 	"tui.editor.cursorWordRight": true;
 	"tui.editor.cursorLineStart": true;
@@ -30,6 +43,7 @@ export interface Keybindings {
 	"tui.editor.yankPop": true;
 	"tui.editor.undo": true;
 	// Generic input actions
+	"tui.input.cursorLineStart": true;
 	"tui.input.newLine": true;
 	"tui.input.submit": true;
 	"tui.input.tab": true;
@@ -96,9 +110,28 @@ export const TUI_KEYBINDINGS = {
 		description: "Move cursor word right",
 	},
 	"tui.editor.cursorLineStart": {
-		defaultKeys: ["home", "ctrl+home", "ctrl+a"],
+		defaultKeys: ["home", "ctrl+home"],
 		description: "Move to line start",
 	},
+	"tui.editor.selectLeft": { defaultKeys: "shift+left", description: "Select left" },
+	"tui.editor.selectRight": { defaultKeys: "shift+right", description: "Select right" },
+	"tui.editor.selectUp": { defaultKeys: "shift+up", description: "Select up" },
+	"tui.editor.selectDown": { defaultKeys: "shift+down", description: "Select down" },
+	"tui.editor.selectWordLeft": {
+		defaultKeys: ["ctrl+shift+left", "alt+shift+left"],
+		description: "Select word left",
+	},
+	"tui.editor.selectWordRight": {
+		defaultKeys: ["ctrl+shift+right", "alt+shift+right"],
+		description: "Select word right",
+	},
+	"tui.editor.selectLineStart": { defaultKeys: "shift+home", description: "Select to line start" },
+	"tui.editor.selectLineEnd": { defaultKeys: "shift+end", description: "Select to line end" },
+	"tui.editor.selectPageUp": { defaultKeys: "shift+pageUp", description: "Select one page up" },
+	"tui.editor.selectPageDown": { defaultKeys: "shift+pageDown", description: "Select one page down" },
+	"tui.editor.selectDocumentStart": { defaultKeys: "ctrl+shift+home", description: "Select to document start" },
+	"tui.editor.selectDocumentEnd": { defaultKeys: "ctrl+shift+end", description: "Select to document end" },
+	"tui.editor.selectAll": { defaultKeys: "ctrl+a", description: "Select all editor text" },
 	"tui.editor.cursorLineEnd": {
 		defaultKeys: ["end", "ctrl+end", "ctrl+e"],
 		description: "Move to line end",
@@ -114,11 +147,11 @@ export const TUI_KEYBINDINGS = {
 	"tui.editor.pageUp": { defaultKeys: ["pageUp", "ctrl+pageUp"], description: "Page up" },
 	"tui.editor.pageDown": { defaultKeys: ["pageDown", "ctrl+pageDown"], description: "Page down" },
 	"tui.editor.deleteCharBackward": {
-		defaultKeys: "backspace",
+		defaultKeys: ["backspace", "shift+backspace"],
 		description: "Delete character backward",
 	},
 	"tui.editor.deleteCharForward": {
-		defaultKeys: ["delete", "ctrl+d"],
+		defaultKeys: ["delete", "ctrl+d", "shift+delete"],
 		description: "Delete character forward",
 	},
 	"tui.editor.deleteWordBackward": {
@@ -140,6 +173,7 @@ export const TUI_KEYBINDINGS = {
 	"tui.editor.yank": { defaultKeys: "ctrl+y", description: "Yank" },
 	"tui.editor.yankPop": { defaultKeys: "alt+y", description: "Yank pop" },
 	"tui.editor.undo": { defaultKeys: "ctrl+-", description: "Undo" },
+	"tui.input.cursorLineStart": { defaultKeys: "ctrl+a", description: "Move single-line cursor to start" },
 	"tui.input.newLine": { defaultKeys: ["shift+enter", "ctrl+j"], description: "Insert newline" },
 	"tui.input.submit": { defaultKeys: "enter", description: "Submit input" },
 	"tui.input.tab": { defaultKeys: "tab", description: "Tab / autocomplete" },
