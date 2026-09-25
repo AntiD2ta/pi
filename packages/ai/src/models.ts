@@ -30,10 +30,12 @@ import type {
 	ProviderRequestOptions,
 	ProviderStreams,
 	SimpleStreamOptions,
+	TranscriptContext,
 	Usage,
 } from "./types.ts";
 import type { UsageReport, UsageReportFetcher } from "./usage-reports.ts";
 import { operationSignal, raceWithAbortSignal } from "./utils/abort.ts";
+import { normalizeContext } from "./utils/transcript.ts";
 
 export { ModelsError, type ModelsErrorCode } from "./auth/resolve.ts";
 
@@ -137,13 +139,18 @@ export interface Provider<TApi extends Api = Api> {
 	/** Optional adapter for finite subscription-usage reports. */
 	fetchUsageReport?: UsageReportFetcher;
 
+	/** Stream a normalized transcript. `Models` normalizes the caller's `Context` before dispatching here. */
 	stream<T extends TApi>(
 		model: Model<T>,
-		context: Context,
+		context: TranscriptContext,
 		options?: ApiStreamOptions<T>,
 	): AssistantMessageEventStream;
 
-	streamSimple(model: Model<TApi>, context: Context, options?: SimpleStreamOptions): AssistantMessageEventStream;
+	streamSimple(
+		model: Model<TApi>,
+		context: TranscriptContext,
+		options?: SimpleStreamOptions,
+	): AssistantMessageEventStream;
 	fetchDeferred?(
 		model: Model<TApi>,
 		handle: DeferredHandle,
@@ -520,6 +527,17 @@ class ModelsImpl implements MutableModels {
 		return resolution ? { source: resolution.source, type: "api_key" } : undefined;
 	}
 
+	checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined> {
+		const signal = operationSignal(options?.signal);
+		const check = (async () => {
+			signal.throwIfAborted();
+			const provider = this.providers.get(providerId);
+			if (!provider) return undefined;
+			return this.checkProviderAuth(provider, await this.readCredential(providerId, signal), signal);
+		})();
+		return raceWithAbortSignal(check, signal);
+	}
+
 	async getUsageReport(providerId: string, options?: AuthOperationOptions): Promise<UsageReport | undefined> {
 		const signal = operationSignal(options?.signal);
 		if (signal.aborted) return undefined;
@@ -542,17 +560,6 @@ class ModelsImpl implements MutableModels {
 		} catch {
 			return undefined;
 		}
-	}
-
-	checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined> {
-		const signal = operationSignal(options?.signal);
-		const check = (async () => {
-			signal.throwIfAborted();
-			const provider = this.providers.get(providerId);
-			if (!provider) return undefined;
-			return this.checkProviderAuth(provider, await this.readCredential(providerId, signal), signal);
-		})();
-		return raceWithAbortSignal(check, signal);
 	}
 
 	getAvailable(providerId?: string, options?: AuthOperationOptions): Promise<readonly Model<Api>[]> {
@@ -705,13 +712,14 @@ class ModelsImpl implements MutableModels {
 		context: Context,
 		options?: ModelsApiStreamOptions<TApi>,
 	): AssistantMessageEventStream {
+		const transcript = normalizeContext(context);
 		return lazyStream(model, async () => {
 			const provider = this.requireProvider(model);
 			const { requestModel, requestOptions } = await this.applyAuth(
 				model,
 				options as ModelsApiStreamOptions<Api> | undefined,
 			);
-			return provider.stream(requestModel as Model<TApi>, context, requestOptions as ApiStreamOptions<TApi>);
+			return provider.stream(requestModel as Model<TApi>, transcript, requestOptions as ApiStreamOptions<TApi>);
 		});
 	}
 
@@ -724,10 +732,11 @@ class ModelsImpl implements MutableModels {
 	}
 
 	streamSimple(model: Model<Api>, context: Context, options?: ModelsSimpleStreamOptions): AssistantMessageEventStream {
+		const transcript = normalizeContext(context);
 		return lazyStream(model, async () => {
 			const provider = this.requireProvider(model);
 			const { requestModel, requestOptions } = await this.applyAuth(model, options);
-			return provider.streamSimple(requestModel, context, requestOptions as SimpleStreamOptions);
+			return provider.streamSimple(requestModel, transcript, requestOptions as SimpleStreamOptions);
 		});
 	}
 
