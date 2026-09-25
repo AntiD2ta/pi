@@ -1,3 +1,4 @@
+import { KeybindingsManager } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 import { KEYBINDINGS, useWindowsKeybindings } from "../src/core/keybindings.ts";
 
@@ -18,6 +19,18 @@ describe("Windows keybinding defaults", () => {
 	it("keeps non-Windows defaults on other platforms", () => {
 		expect(useWindowsKeybindings("linux", {})).toBe(false);
 		expect(useWindowsKeybindings("darwin", {})).toBe(false);
+	});
+
+	it("composes editor selection with platform and application bindings", () => {
+		const kb = new KeybindingsManager(KEYBINDINGS, {
+			"tui.editor.selectPageUp": "alt+shift+p",
+		});
+		expect(kb.getKeys("tui.editor.selectPageUp")).toEqual(["alt+shift+p"]);
+		expect(kb.matches("\x1b[5;2~", "tui.editor.selectPageUp")).toBe(false);
+		expect(kb.matches("\x1b[1;6H", "tui.editor.selectDocumentStart")).toBe(true);
+		expect(kb.getKeys("tui.altScreen.pageUp")).toEqual(["pageUp"]);
+		expect(kb.getKeys("app.clipboard.pasteImage")).toEqual([useWindowsKeybindings() ? "alt+v" : "ctrl+v"]);
+		expect(kb.getConflicts()).toEqual([]);
 	});
 
 	it("applies the detected defaults consistently", () => {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import { Editor } from "../src/components/editor.ts";
+import { getKeybindings, KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "../src/keybindings.ts";
 import type { TUI } from "../src/tui.ts";
 import { TuiAltScreen } from "../src/tui-alt-screen.ts";
 import { TuiMainScreen } from "../src/tui-main-screen.ts";
@@ -13,6 +14,75 @@ function editor(width = 40): Editor {
 }
 
 describe("keyboard editor selection", () => {
+	it("extends by word using existing word movement and reverses across its anchor", () => {
+		const input = editor();
+		input.setText("one two three");
+		input.handleInput("\x1b[1;5D");
+		input.handleInput("\x1b[1;6D");
+		input.handleInput("\x1b[1;6C");
+		input.handleInput("\x1b[1;6C");
+		input.handleInput("X");
+		assert.equal(input.getText(), "one two X");
+	});
+	it("selects logical line boundaries and keeps the anchor across reversal", () => {
+		const input = editor();
+		input.setText("abc\ndef");
+		input.handleInput("\x1b[D");
+		input.handleInput("\x1b[1;2F");
+		input.handleInput("\x1b[1;2H");
+		input.handleInput("X");
+		assert.equal(input.getText(), "abc\nXf");
+	});
+
+	it("selects a page by wrapped rows without introducing newlines", () => {
+		const input = editor(8);
+		input.setText("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ");
+		input.render(8);
+		input.handleInput("\x1b[5;2~");
+		input.handleInput("\x7f");
+		assert.equal(input.getText(), "abc");
+	});
+
+	it("selects to document boundaries across logical newlines", () => {
+		const input = editor();
+		input.setText("first\nsecond\nthird");
+		input.handleInput("\x1b[1;6H");
+		input.handleInput("X");
+		assert.equal(input.getText(), "X");
+		input.setText("first\nsecond\nthird");
+		input.handleInput("\x01");
+		input.handleInput("\x1b[D");
+		input.handleInput("\x1b[1;6F");
+		input.handleInput("Y");
+		assert.equal(input.getText(), "Y");
+	});
+
+	it("uses user selection overrides without consuming old defaults or other actions", () => {
+		const original = getKeybindings();
+		setKeybindings(
+			new KeybindingsManager(TUI_KEYBINDINGS, {
+				"tui.editor.selectWordLeft": "ctrl+shift+b",
+				"tui.editor.selectAll": "ctrl+shift+a",
+			}),
+		);
+		try {
+			const input = editor();
+			input.setText("one two");
+			input.handleInput("\x1b[1;6D");
+			assert.equal(input.getCursor().col, 7);
+			input.handleInput("\x1b[98;6u");
+			input.handleInput("X");
+			assert.equal(input.getText(), "one X");
+			input.handleInput("\x01");
+			assert.equal(input.getText(), "one X");
+			input.handleInput("\x1b[97;6u");
+			input.handleInput("Y");
+			assert.equal(input.getText(), "Y");
+		} finally {
+			setKeybindings(original);
+		}
+	});
+
 	it("selects a grapheme with Shift+Left and replaces it with typed text", () => {
 		const input = editor();
 		input.setText("a😀b");

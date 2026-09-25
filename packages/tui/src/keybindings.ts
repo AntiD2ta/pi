@@ -16,6 +16,14 @@ export interface Keybindings {
 	"tui.editor.selectRight": true;
 	"tui.editor.selectUp": true;
 	"tui.editor.selectDown": true;
+	"tui.editor.selectWordLeft": true;
+	"tui.editor.selectWordRight": true;
+	"tui.editor.selectLineStart": true;
+	"tui.editor.selectLineEnd": true;
+	"tui.editor.selectPageUp": true;
+	"tui.editor.selectPageDown": true;
+	"tui.editor.selectDocumentStart": true;
+	"tui.editor.selectDocumentEnd": true;
 	"tui.editor.selectAll": true;
 	"tui.editor.cursorWordLeft": true;
 	"tui.editor.cursorWordRight": true;
@@ -108,6 +116,20 @@ export const TUI_KEYBINDINGS = {
 	"tui.editor.selectRight": { defaultKeys: "shift+right", description: "Select right" },
 	"tui.editor.selectUp": { defaultKeys: "shift+up", description: "Select up" },
 	"tui.editor.selectDown": { defaultKeys: "shift+down", description: "Select down" },
+	"tui.editor.selectWordLeft": {
+		defaultKeys: ["ctrl+shift+left", "alt+shift+left"],
+		description: "Select word left",
+	},
+	"tui.editor.selectWordRight": {
+		defaultKeys: ["ctrl+shift+right", "alt+shift+right"],
+		description: "Select word right",
+	},
+	"tui.editor.selectLineStart": { defaultKeys: "shift+home", description: "Select to line start" },
+	"tui.editor.selectLineEnd": { defaultKeys: "shift+end", description: "Select to line end" },
+	"tui.editor.selectPageUp": { defaultKeys: "shift+pageUp", description: "Select one page up" },
+	"tui.editor.selectPageDown": { defaultKeys: "shift+pageDown", description: "Select one page down" },
+	"tui.editor.selectDocumentStart": { defaultKeys: "ctrl+shift+home", description: "Select to document start" },
+	"tui.editor.selectDocumentEnd": { defaultKeys: "ctrl+shift+end", description: "Select to document end" },
 	"tui.editor.selectAll": { defaultKeys: "ctrl+a", description: "Select all editor text" },
 	"tui.editor.cursorLineEnd": {
 		defaultKeys: ["end", "ctrl+end", "ctrl+e"],

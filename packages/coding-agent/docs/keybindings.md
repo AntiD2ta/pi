@@ -36,12 +36,34 @@ Modifier combinations: `ctrl+shift+x`, `alt+ctrl+x`, `ctrl+shift+alt+x`, `super+
 | `tui.editor.cursorRight` | `right`, `ctrl+f` | Move cursor right |
 | `tui.editor.cursorWordLeft` | `alt+left`, `ctrl+left`, `alt+b` | Move cursor word left |
 | `tui.editor.cursorWordRight` | `alt+right`, `ctrl+right`, `alt+f` | Move cursor word right |
-| `tui.editor.cursorLineStart` | `home`, `ctrl+home`, `ctrl+a` | Move to line start |
+| `tui.editor.cursorLineStart` | `home`, `ctrl+home` | Move to line start |
 | `tui.editor.cursorLineEnd` | `end`, `ctrl+end`, `ctrl+e` | Move to line end |
 | `tui.editor.jumpForward` | `ctrl+]` | Jump forward to character |
 | `tui.editor.jumpBackward` | `ctrl+alt+]` | Jump backward to character |
 | `tui.editor.pageUp` | `pageUp`, `ctrl+pageUp` | Scroll up by page |
 | `tui.editor.pageDown` | `pageDown`, `ctrl+pageDown` | Scroll down by page |
+
+### TUI Editor Range Selection
+
+Selection extends from a stable anchor. Reversing direction moves the active end without moving that anchor. Vertical and page movement use visible wrapped rows; the selected text retains only logical newlines. These actions apply to the built-in multiline editor in regular and fullscreen modes. `Ctrl+A` selects the entire prompt, replacing its former line-start default.
+
+| Keybinding id | Default | Description |
+|--------|---------|-------------|
+| `tui.editor.selectLeft` | `shift+left` | Select one grapheme left |
+| `tui.editor.selectRight` | `shift+right` | Select one grapheme right |
+| `tui.editor.selectUp` | `shift+up` | Select one visible row up |
+| `tui.editor.selectDown` | `shift+down` | Select one visible row down |
+| `tui.editor.selectWordLeft` | `ctrl+shift+left`, `alt+shift+left` | Select one word left |
+| `tui.editor.selectWordRight` | `ctrl+shift+right`, `alt+shift+right` | Select one word right |
+| `tui.editor.selectLineStart` | `shift+home` | Select to logical line start |
+| `tui.editor.selectLineEnd` | `shift+end` | Select to logical line end |
+| `tui.editor.selectPageUp` | `shift+pageUp` | Select one page up by visible rows |
+| `tui.editor.selectPageDown` | `shift+pageDown` | Select one page down by visible rows |
+| `tui.editor.selectDocumentStart` | `ctrl+shift+home` | Select to prompt start |
+| `tui.editor.selectDocumentEnd` | `ctrl+shift+end` | Select to prompt end |
+| `tui.editor.selectAll` | `ctrl+a` | Select the whole prompt |
+
+User bindings replace each action's defaults. Modified navigation keys work only when the terminal reports their modifiers; legacy terminals may send the same bytes as unmodified keys. No fallback shortcuts are assigned. In tmux, enable extended keys as described in [tmux setup](tmux.md). An application or fullscreen transcript action explicitly bound to the same key may intercept it before the editor receives it.
 
 The dedicated history actions always change history entries, regardless of the cursor position in a multiline prompt. Explicit history bindings take precedence over application actions while the main editor is focused, so binding `tui.editor.historyPrevious` to `ctrl+p` overrides model cycling in that context without changing `Ctrl+P` in selectors.
 

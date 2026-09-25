@@ -869,13 +869,35 @@ export class Editor implements Component, Focusable {
 			kb.matches(data, "tui.editor.selectLeft") ||
 			kb.matches(data, "tui.editor.selectRight") ||
 			kb.matches(data, "tui.editor.selectUp") ||
-			kb.matches(data, "tui.editor.selectDown")
+			kb.matches(data, "tui.editor.selectDown") ||
+			kb.matches(data, "tui.editor.selectWordLeft") ||
+			kb.matches(data, "tui.editor.selectWordRight") ||
+			kb.matches(data, "tui.editor.selectLineStart") ||
+			kb.matches(data, "tui.editor.selectLineEnd") ||
+			kb.matches(data, "tui.editor.selectPageUp") ||
+			kb.matches(data, "tui.editor.selectPageDown") ||
+			kb.matches(data, "tui.editor.selectDocumentStart") ||
+			kb.matches(data, "tui.editor.selectDocumentEnd")
 		) {
 			this.anchor ??= this.getCursor();
 			this.cancelAutocomplete();
 			if (kb.matches(data, "tui.editor.selectLeft")) this.moveCursor(0, -1);
 			else if (kb.matches(data, "tui.editor.selectRight")) this.moveCursor(0, 1);
-			else this.moveCursor(kb.matches(data, "tui.editor.selectUp") ? -1 : 1, 0);
+			else if (kb.matches(data, "tui.editor.selectWordLeft")) this.moveWordBackwards();
+			else if (kb.matches(data, "tui.editor.selectWordRight")) this.moveWordForwards();
+			else if (kb.matches(data, "tui.editor.selectLineStart")) this.moveToLineStart();
+			else if (kb.matches(data, "tui.editor.selectLineEnd")) this.moveToLineEnd();
+			else if (kb.matches(data, "tui.editor.selectPageUp")) this.pageScroll(-1);
+			else if (kb.matches(data, "tui.editor.selectPageDown")) this.pageScroll(1);
+			else if (kb.matches(data, "tui.editor.selectDocumentStart")) {
+				this.state.cursorLine = 0;
+				this.setCursorCol(0);
+				this.lastAction = null;
+			} else if (kb.matches(data, "tui.editor.selectDocumentEnd")) {
+				this.state.cursorLine = this.state.lines.length - 1;
+				this.setCursorCol(this.state.lines[this.state.cursorLine]!.length);
+				this.lastAction = null;
+			} else this.moveCursor(kb.matches(data, "tui.editor.selectUp") ? -1 : 1, 0);
 			return;
 		}
 		if (kb.matches(data, "tui.editor.selectAll")) {

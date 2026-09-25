@@ -53,7 +53,7 @@ Without tmux extended keys, modified Enter keys collapse to legacy sequences:
 | Ctrl+Enter | `\r` | `\x1b[13;5u` |
 | Alt/Option+Enter | `\x1b\r` | `\x1b[13;3u` |
 
-This affects the default keybindings (`Enter` to submit, `Shift+Enter` for newline) and any custom keybindings using modified Enter.
+This affects the default keybindings (`Enter` to submit, `Shift+Enter` for newline) and any custom keybindings using modified Enter. The multiline editor also uses modified arrows, Home/End, and PageUp/PageDown for range selection. Some terminals cannot distinguish these from unmodified navigation keys; tmux extended keys can forward modifier information only when the underlying terminal reports it. Pi does not add fallback shortcuts for combinations that cannot be distinguished. See [editor range-selection bindings](keybindings.md#tui-editor-range-selection).
 
 ## Requirements
 
