@@ -22,7 +22,8 @@ test("an image path is shown as an atomic marker and submitted as a path", () =>
 	input.insertImageMarker("/tmp/one.png");
 	assert.equal(input.getText(), "[Image 1]");
 	assert.equal(input.getExpandedText(), "/tmp/one.png");
-	input.handleInput("\x01");
+	input.handleInput("\x1b[H");
+	assert.equal(input.getCursor().col, 0);
 	input.handleInput("\x1b[C");
 	assert.equal(input.getCursor().col, 9);
 	let submitted = "";
@@ -39,7 +40,7 @@ test("deleting an image renumbers the remaining markers without changing their p
 	input.insertImageMarker("/tmp/one.png");
 	input.insertTextAtCursor(" ");
 	input.insertImageMarker("/tmp/two.png");
-	input.handleInput("\x01");
+	input.handleInput("\x1b[H");
 	input.handleInput("\x1b[C");
 	input.handleInput("\x7f");
 	assert.equal(input.getText(), " [Image 1]");
@@ -52,7 +53,7 @@ test("forward delete removes a whole image and renumbers the draft", () => {
 	const input = editor();
 	input.insertImageMarker("/tmp/one.png");
 	input.insertImageMarker("/tmp/two.png");
-	input.handleInput("\x01");
+	input.handleInput("\x1b[H");
 	input.handleInput("\x04");
 	assert.equal(input.getText(), "[Image 1]");
 	assert.equal(input.getExpandedText(), "/tmp/two.png");
@@ -69,7 +70,7 @@ test("word and line deletion remove whole markers", () => {
 		input.insertImageMarker("/tmp/one.png");
 		input.insertTextAtCursor(" ");
 		input.insertImageMarker("/tmp/two.png");
-		input.handleInput("\x01");
+		input.handleInput("\x1b[H");
 		if (!atStart) input.handleInput("\x1b[C");
 		input.handleInput(key);
 		assert.equal(input.getExpandedText().includes("/tmp/one.png"), false, `key ${JSON.stringify(key)}`);
