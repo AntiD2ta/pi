@@ -102,6 +102,7 @@ describe("KeybindingsManager", () => {
 		assert.deepStrictEqual(keybindings.getKeys("tui.altScreen.searchPrevious"), ["shift+enter", "ctrl+shift+g"]);
 		assert.deepStrictEqual(keybindings.getKeys("tui.altScreen.searchClose"), ["escape"]);
 		assert.deepStrictEqual(keybindings.getKeys("tui.altScreen.top"), ["home"]);
+		assert.deepStrictEqual(keybindings.getKeys("tui.altScreen.userPrompt"), ["alt+home"]);
 		assert.deepStrictEqual(keybindings.getKeys("tui.altScreen.bottom"), ["end"]);
 	});
 

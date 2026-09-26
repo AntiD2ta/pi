@@ -27,6 +27,11 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScr
 			searchMatchStyle: (text) => theme.underline(styleSearchMatch(text)),
 			searchCurrentMatchStyle: (text) => theme.bold(theme.inverse(styleSearchMatch(text))),
 			searchNavigationButtonStyle: (text, hovered) => (hovered ? theme.underline(text) : text),
+			scrollToUserPromptIndicator: () => {
+				const shortcut = keyDisplayText("tui.altScreen.userPrompt");
+				const label = ` ↑ Jump to latest prompt${shortcut ? ` · ${shortcut}` : ""} `;
+				return theme.bg("selectedBg", theme.fg("text", label));
+			},
 			scrollToEndIndicator: () => {
 				const shortcut = keyDisplayText("tui.altScreen.bottom");
 				const label = ` ↓ Jump to latest message${shortcut ? ` · ${shortcut}` : ""} `;

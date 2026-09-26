@@ -71,8 +71,9 @@ const FOCUS_IN = "\x1b[I";
 const FOCUS_OUT = "\x1b[O";
 const BEGIN_SYNCHRONIZED_OUTPUT = "\x1b[?2026h";
 const END_SYNCHRONIZED_OUTPUT = "\x1b[?2026l";
-const OSC133_ZONE_PREFIX = /^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/;
+const OSC133_ZONE_PREFIX = /^(?:\x1b\]133;(?:[ABC]|P;pi-user)(?:\x07|\x1b\\))+/;
 const OSC133_PROMPT_START = /^\x1b\]133;A(?:\x07|\x1b\\)/;
+const OSC133_USER_PROMPT_START = /^\x1b\]133;A(?:\x07|\x1b\\)\x1b\]133;P;pi-user(?:\x07|\x1b\\)/;
 const PAGE_SCROLL_OVERLAP = 4;
 const ALT_WHEEL_SCROLL_MULTIPLIER = 5;
 const MAX_CACHED_OFFSCREEN_KITTY_IMAGES = 16;
@@ -145,6 +146,10 @@ interface ScrollToEndIndicatorRect {
 	width: number;
 }
 
+interface ScrollToUserPromptIndicatorRect extends ScrollToEndIndicatorRect {
+	target: number;
+}
+
 type SearchSelectionMode = "query" | "retain" | "next" | "previous";
 
 interface ActiveSearch {
@@ -181,6 +186,8 @@ export interface TuiAltScreenOptions {
 	 * primary scroll view while that view is scrolled away from its end.
 	 */
 	scrollToEndIndicator?: () => string;
+	/** Render a clickable jump to the nearest preceding user prompt at the transcript's top edge. */
+	scrollToUserPromptIndicator?: () => string;
 	/** Open an OSC 8 hyperlink activated with a primary-button click. */
 	openUrl?: (url: string) => void;
 	/** Handle an unmodified secondary-button press for clipboard paste. Currently enabled on Windows only. */
@@ -224,6 +231,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private scrollbarDrag?: ScrollbarDrag;
 	private scrollbarHover?: ScrollView;
 	private scrollToEndIndicatorRect?: ScrollToEndIndicatorRect;
+	private scrollToUserPromptIndicatorRect?: ScrollToUserPromptIndicatorRect;
 	private activeSearch?: ActiveSearch;
 	private pressedUrl?: string;
 	private selectionDragged = false;
@@ -246,6 +254,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private readonly searchCurrentMatchStyle: (text: string) => string;
 	private readonly searchNavigationButtonStyle: (text: string, hovered: boolean) => string;
 	private readonly scrollToEndIndicator?: () => string;
+	private readonly scrollToUserPromptIndicator?: () => string;
 	private readonly openUrl?: (url: string) => void;
 	private readonly onRightClickPaste?: () => void;
 	private copyOnSelect: boolean;
@@ -273,6 +282,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.searchCurrentMatchStyle = options.searchCurrentMatchStyle ?? ((text) => `\x1b[1;7m${text}\x1b[22;27m`);
 		this.searchNavigationButtonStyle = options.searchNavigationButtonStyle ?? ((text) => text);
 		this.scrollToEndIndicator = options.scrollToEndIndicator;
+		this.scrollToUserPromptIndicator = options.scrollToUserPromptIndicator;
 		this.openUrl = options.openUrl;
 		this.onRightClickPaste = options.onRightClickPaste;
 		this.copyOnSelect = options.copyOnSelect ?? true;
@@ -312,6 +322,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		if (this.layoutRoot === component) return;
 		this.layoutRoot = component;
 		this.currentLayout = undefined;
+		this.scrollToUserPromptIndicatorRect = undefined;
 		this.requestRender();
 	}
 
@@ -468,6 +479,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.previousScreenWidth = 0;
 		this.previousScreenHeight = 0;
 		this.currentLayout = undefined;
+		this.scrollToUserPromptIndicatorRect = undefined;
 	}
 
 	scrollBy(lines: number): void {
@@ -497,6 +509,26 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			this.requestRender();
 			return;
 		}
+	}
+
+	private scrollToUserPrompt(): void {
+		if (!this.currentLayout) return;
+		const scrollView = this.getPrimaryScrollView();
+		const lines = getScrollViewBox(this.currentLayout, scrollView)?.scrollContentLines;
+		if (!lines) return;
+		const target = this.findPreviousUserPrompt(
+			lines,
+			scrollView.isFollowingEnd ? lines.length : scrollView.scrollTop,
+		);
+		if (target < 0) return;
+		scrollView.scrollTo(target);
+		this.requestRender();
+	}
+
+	private findPreviousUserPrompt(lines: readonly string[], scrollTop: number): number {
+		let target = scrollTop - 1;
+		while (target >= 0 && !OSC133_USER_PROMPT_START.test(lines[target] ?? "")) target--;
+		return target;
 	}
 
 	private toggleSearch(): void {
@@ -768,6 +800,10 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			if (!isRelease) this.scrollToTop();
 			return { consume: true };
 		}
+		if (keybindings.matches(data, "tui.altScreen.userPrompt")) {
+			if (!isRelease) this.scrollToUserPrompt();
+			return { consume: true };
+		}
 		if (keybindings.matches(data, "tui.altScreen.bottom")) {
 			if (!isRelease) this.scrollToBottom();
 			return { consume: true };
@@ -924,6 +960,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 
 		const overlay = this.dispatchMouseToOverlay(event);
 		if (!overlay.hit) {
+			if (this.handleScrollToUserPromptIndicatorMouseEvent(raw)) return;
 			if (this.handleScrollToEndIndicatorMouseEvent(raw)) return;
 			const scrollbarHandled = this.handleScrollbarMouseEvent(raw);
 			if (!this.scrollbarDrag) this.updateScrollbarHover(raw.x, raw.y);
@@ -1023,6 +1060,15 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		} catch {
 			// Clipboard paste is best-effort.
 		}
+		return true;
+	}
+
+	private handleScrollToUserPromptIndicatorMouseEvent(event: SgrMouseEvent): boolean {
+		const rect = this.scrollToUserPromptIndicatorRect;
+		if (!rect || event.release || (event.button & 32) !== 0 || (event.button & 3) !== 0) return false;
+		if (event.y !== rect.row || event.x < rect.column || event.x >= rect.column + rect.width) return false;
+		this.getPrimaryScrollView().scrollTo(rect.target);
+		this.requestRender();
 		return true;
 	}
 
@@ -1744,6 +1790,36 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		return result;
 	}
 
+	private compositeScrollToUserPromptIndicator(screen: string[], layout: LayoutFrame, width: number): string[] {
+		this.scrollToUserPromptIndicatorRect = undefined;
+		const scrollView = layout.primaryScrollView ?? this.implicitScrollView;
+		if (!this.scrollToUserPromptIndicator || scrollView.isFollowingEnd) return screen;
+		const box = getScrollViewBox(layout, scrollView);
+		const clip = box?.clip;
+		const lines = box?.scrollContentLines;
+		if (!clip || !lines || clip.width <= 0 || clip.height <= 0 || scrollView.scrollTop === 0) return screen;
+		const row = clip.y;
+		if (row >= screen.length || isImageLine(screen[row] ?? "") || this.scrollToEndIndicatorRect?.row === row) {
+			return screen;
+		}
+		if (OSC133_USER_PROMPT_START.test(lines[scrollView.scrollTop] ?? "")) return screen;
+		const target = this.findPreviousUserPrompt(lines, scrollView.scrollTop);
+		if (target < 0) return screen;
+
+		const scrollbarColumn = box ? getScrollbarGeometry(box)?.column : undefined;
+		const label = truncateToWidth(this.scrollToUserPromptIndicator(), clip.width, "");
+		const labelWidth = visibleWidth(label);
+		const column = clip.x + Math.floor((clip.width - labelWidth) / 2);
+		const rightEdge = scrollbarColumn ?? clip.x + clip.width;
+		const text = truncateToWidth(label, Math.max(0, rightEdge - column), "");
+		const textWidth = visibleWidth(text);
+		if (textWidth === 0) return screen;
+		const result = [...screen];
+		result[row] = compositeTuiLine(result[row] ?? "", text, column, textWidth, width);
+		this.scrollToUserPromptIndicatorRect = { row, column, width: textWidth, target };
+		return result;
+	}
+
 	private compositeFlashes(screen: string[], width: number, height: number): string[] {
 		const flashLines = this.flashes.render(width).slice(-height);
 		if (flashLines.length === 0) return screen;
@@ -1770,6 +1846,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		let screen = nextLayout.lines.map((line) => line.replace(OSC133_ZONE_PREFIX, ""));
 		screen = this.applySearchHighlights(screen, nextLayout);
 		screen = this.compositeScrollToEndIndicator(screen, nextLayout, width);
+		screen = this.compositeScrollToUserPromptIndicator(screen, nextLayout, width);
 		screen = this.compositeOverlays(screen, width, height);
 		if (screen.length > height) screen = screen.slice(screen.length - height);
 		screen = this.applySelection(screen, nextLayout);
