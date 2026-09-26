@@ -12,6 +12,7 @@ export interface InteractiveTuiOptions {
 	readonly terminal?: Terminal;
 	readonly onRightClickPaste?: () => void;
 	readonly fullscreenCopyOnSelect?: boolean;
+	readonly transformCopiedText?: (text: string) => string;
 }
 
 /** Composition root shared by coding-agent presentations. */
@@ -41,7 +42,7 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScr
 			copyOnSelect: options.fullscreenCopyOnSelect,
 			copySelection: async (text) => {
 				try {
-					await copyToClipboard(text);
+					await copyToClipboard(options.transformCopiedText?.(text) ?? text);
 					return true;
 				} catch (error) {
 					return error instanceof Error ? error.message : String(error);

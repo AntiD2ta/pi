@@ -342,6 +342,7 @@ const noOpUIContext: ExtensionUIContext = {
 	setTitle: () => {},
 	custom: async () => undefined as never,
 	pasteToEditor: () => {},
+	setImageMarkersEnabled: () => {},
 	setEditorText: () => {},
 	getEditorText: () => "",
 	editor: async () => undefined,

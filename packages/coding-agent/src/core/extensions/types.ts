@@ -249,6 +249,9 @@ export interface ExtensionUIContext {
 	/** Paste text into the editor, triggering paste handling (collapse for large content). */
 	pasteToEditor(text: string): void;
 
+	/** Show Ctrl+V clipboard images as atomic path-backed markers in the prompt editor. */
+	setImageMarkersEnabled(enabled: boolean): void;
+
 	/** Set the text in the core input editor. */
 	setEditorText(text: string): void;
 
