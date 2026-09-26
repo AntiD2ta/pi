@@ -69,6 +69,7 @@ export interface Keybindings {
 	"tui.altScreen.searchPrevious": true;
 	"tui.altScreen.searchClose": true;
 	"tui.altScreen.top": true;
+	"tui.altScreen.userPrompt": true;
 	"tui.altScreen.bottom": true;
 }
 
@@ -240,6 +241,7 @@ export const TUI_KEYBINDINGS = {
 		description: "Close transcript search",
 	},
 	"tui.altScreen.top": { defaultKeys: "home", description: "Scroll viewport to top" },
+	"tui.altScreen.userPrompt": { defaultKeys: "alt+home", description: "Jump to preceding user prompt" },
 	"tui.altScreen.bottom": { defaultKeys: "end", description: "Scroll viewport to bottom" },
 } as const satisfies KeybindingDefinitions;
 

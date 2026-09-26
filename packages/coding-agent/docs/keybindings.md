@@ -139,6 +139,7 @@ In fullscreen mode, these actions control the transcript and take precedence ove
 | `tui.altScreen.searchPrevious` | `shift+enter`, `ctrl+shift+g` | Select the previous search match while searching |
 | `tui.altScreen.searchClose` | `escape` | Close transcript search |
 | `tui.altScreen.top` | `home` | Scroll to the beginning of the transcript |
+| `tui.altScreen.userPrompt` | `alt+home` | Jump to the nearest preceding user prompt |
 | `tui.altScreen.bottom` | `end` | Scroll to the transcript end and follow new output |
 
 ### Application

@@ -16,6 +16,7 @@ import {
 	type StatusIndicatorKind,
 	WorkingStatusIndicator,
 } from "../src/modes/interactive/components/status-indicator.ts";
+import { UserMessageComponent } from "../src/modes/interactive/components/user-message.ts";
 import {
 	createInteractiveTui,
 	createInteractiveTuiReference,
@@ -108,6 +109,135 @@ describe("createInteractiveTui", () => {
 		} finally {
 			ui.stop();
 			setKeybindings(previousKeybindings);
+		}
+	});
+
+	it("keeps the standard prompt marker but not the private user marker in regular terminal output", async () => {
+		initTheme("dark");
+		const terminal = new RecordingTerminal(60, 8);
+		const ui = createInteractiveTui({
+			tuiMode: "regular",
+			showHardwareCursor: false,
+			logDirectory: "/tmp",
+			terminal,
+		});
+		ui.addChild(new UserMessageComponent("prompt"));
+		ui.start();
+		try {
+			await terminal.waitForRender();
+			const output = terminal.writes.join("");
+			expect(output).toContain("\x1b]133;A\x07");
+			expect(output).not.toContain("\x1b]133;P;pi-user\x07");
+		} finally {
+			ui.stop();
+		}
+	});
+
+	it("jumps from the top control to the latest user prompt, then an older prompt", async () => {
+		initTheme("dark");
+		const terminal = new RecordingTerminal(60, 6);
+		const ui = createInteractiveTui({
+			tuiMode: "fullscreen",
+			showHardwareCursor: false,
+			logDirectory: "/tmp",
+			terminal,
+		});
+		const document = new Container();
+		for (const number of [1, 2, 3]) {
+			document.addChild(new UserMessageComponent(`prompt ${number}`));
+			document.addChild(new Text(`\x1b]133;A\x07reply ${number}\nresponse\nresponse\nresponse`, 0, 0));
+		}
+		const viewport = createChatViewport({
+			document,
+			pendingMessages: new Container(),
+			status: new Container(),
+			editor: new Text("editor", 0, 0),
+			footer: new Text("footer", 0, 0),
+		});
+		ui.setLayoutRoot(viewport.root);
+		ui.start();
+		try {
+			await terminal.waitForRender();
+			ui.scrollBy(-1);
+			await terminal.waitForRender();
+			let screen = terminal.getViewport();
+			expect(screen[0]).toContain("Jump to latest prompt");
+			const column = screen[0]!.indexOf("Jump to latest prompt") + 2;
+			terminal.sendInput(`\x1b[<0;${column};1M`);
+			terminal.sendInput(`\x1b[<0;${column};1m`);
+			await terminal.waitForRender();
+			expect(terminal.getViewport().some((line) => line.includes("prompt 3"))).toBe(true);
+			expect(terminal.getViewport()[0]).not.toContain("Jump to latest prompt");
+			ui.scrollBy(-1);
+			await terminal.waitForRender();
+			screen = terminal.getViewport();
+			expect(screen[0]).toContain("Jump to latest prompt");
+			terminal.sendInput(`\x1b[<0;${column};1M`);
+			terminal.sendInput(`\x1b[<0;${column};1m`);
+			await terminal.waitForRender();
+			expect(terminal.getViewport().some((line) => line.includes("prompt 2"))).toBe(true);
+			ui.scrollBy(-1);
+			await terminal.waitForRender();
+			terminal.sendInput(`\x1b[<0;${column};1M`);
+			terminal.sendInput(`\x1b[<0;${column};1m`);
+			await terminal.waitForRender();
+			expect(terminal.getViewport().some((line) => line.includes("prompt 1"))).toBe(true);
+			ui.scrollToTop();
+			await terminal.waitForRender();
+			expect(terminal.getViewport()[0]).not.toContain("Jump to latest prompt");
+			expect(terminal.writes.every((write) => !write.includes("\x1b]133;P;pi-user"))).toBe(true);
+		} finally {
+			ui.stop();
+		}
+	});
+
+	it("uses Alt+Home to jump to preceding user prompts without changing Home", async () => {
+		initTheme("dark");
+		const terminal = new RecordingTerminal(60, 6);
+		const ui = createInteractiveTui({
+			tuiMode: "fullscreen",
+			showHardwareCursor: false,
+			logDirectory: "/tmp",
+			terminal,
+		});
+		const document = new Container();
+		for (const number of [1, 2, 3]) {
+			document.addChild(new UserMessageComponent(`prompt ${number}`));
+			document.addChild(new Text(`\x1b]133;A\x07reply ${number}\n${"response\n".repeat(8)}`, 0, 0));
+		}
+		ui.setLayoutRoot(
+			createChatViewport({
+				document,
+				pendingMessages: new Container(),
+				status: new Container(),
+				editor: new Text("editor", 0, 0),
+				footer: new Text("footer", 0, 0),
+			}).root,
+		);
+		ui.start();
+		try {
+			await terminal.waitForRender();
+			const bottom = ui.viewportTop;
+			terminal.sendInput("\x1b[1;3H");
+			await terminal.waitForRender();
+			expect(ui.viewportTop).toBeLessThan(bottom);
+			expect(terminal.getViewport().some((line) => line.includes("prompt 3"))).toBe(true);
+			ui.scrollBy(-1);
+			await terminal.waitForRender();
+			expect(terminal.getViewport()[0]).toMatch(/Jump to latest prompt · (?:Alt|Option)\+Home/);
+			terminal.sendInput("\x1b[1;3H");
+			await terminal.waitForRender();
+			expect(terminal.getViewport().some((line) => line.includes("prompt 2"))).toBe(true);
+			ui.scrollBy(-1);
+			await terminal.waitForRender();
+			terminal.sendInput("\x1b[1;3H");
+			await terminal.waitForRender();
+			expect(terminal.getViewport().some((line) => line.includes("prompt 1"))).toBe(true);
+			terminal.sendInput("\x1b[H");
+			await terminal.waitForRender();
+			expect(terminal.getViewport().some((line) => line.includes("prompt 1"))).toBe(true);
+		} finally {
+			ui.stop();
 		}
 	});
 
