@@ -51,6 +51,7 @@ Pi's tools and extensions run with the permissions of the Pi process. Project tr
 - [JSON mode](json.md)
 - [Keybindings](keybindings.md)
 - [llama.cpp](llama-cpp.md)
+- [MCP](mcp.md)
 - [Message types](message-types.md)
 - [Packages](packages.md)
 - [Prompt templates](prompt-templates.md)
@@ -71,4 +72,5 @@ Pi's tools and extensions run with the permissions of the Pi process. Project tr
 - [Themes](themes.md)
 - [tmux](tmux.md)
 - [TUI](tui.md)
+- [Virtual models](virtual-models.md)
 - [Windows](windows.md)

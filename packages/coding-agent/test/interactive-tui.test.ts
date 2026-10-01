@@ -296,7 +296,11 @@ describe("createInteractiveTui", () => {
 		renderer.addChild(editor);
 		renderer.setFocus(editor);
 		const context = Object.assign(Object.create(InteractiveMode.prototype), {
-			runtimeHost: { session: { settingsManager: { getFullscreenCopyOnSelect: () => true } } },
+			runtimeHost: {
+				session: {
+					settingsManager: { getFullscreenCopyOnSelect: () => true, getFullscreenWheelScrollLines: () => "auto" },
+				},
+			},
 			renderer,
 			fullscreenLayoutRoot: editor,
 			options: { tuiMode: "regular" as TuiMode },
