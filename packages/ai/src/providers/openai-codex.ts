@@ -8,7 +8,7 @@ import { createOpenAICodexUsageReportFetcher } from "./openai-codex-usage.ts";
 export function openaiCodexProvider(): Provider<"openai-codex-responses"> {
 	return createProvider({
 		id: "openai-codex",
-		name: "OpenAI Codex",
+		name: "OpenAI Codex (legacy)",
 		baseUrl: "https://chatgpt.com/backend-api",
 		auth: {
 			oauth: lazyOAuth({
