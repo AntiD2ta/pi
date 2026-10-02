@@ -42,6 +42,7 @@ Pi's tools and extensions run with the permissions of the Pi process. Project tr
 
 - [CLI integration](cli-integration.md)
 - [CLI reference](cli.md)
+- [Codemode](codemode.md)
 - [Compaction](compaction.md)
 - [Containerization](containerization.md)
 - [Custom providers](custom-provider.md)
