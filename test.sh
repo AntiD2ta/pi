@@ -75,5 +75,13 @@ for name in CI GITHUB_ACTIONS; do
 	[[ -z "$value" ]] || test_env+=("$name=$value")
 done
 
+if [[ -n "${VITEST_MAX_WORKERS:-}" ]]; then
+	if [[ ! "$VITEST_MAX_WORKERS" =~ ^[1-9][0-9]*$ ]]; then
+		printf 'VITEST_MAX_WORKERS must be a positive integer\n' >&2
+		exit 1
+	fi
+	test_env+=("VITEST_MAX_WORKERS=$VITEST_MAX_WORKERS")
+fi
+
 echo "Running tests without API keys in isolated home: $test_root/home"
 env -i "${test_env[@]}" npm test

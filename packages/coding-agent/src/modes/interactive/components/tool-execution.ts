@@ -17,10 +17,11 @@ import type {
 	ToolRenderers,
 } from "../../../core/extensions/types.ts";
 
-export type { ToolRenderers } from "../../../core/extensions/types.ts";
+/** What this component needs from a tool: how to draw it, without executing it. */
+export type { ToolRenderers };
 
 import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
-import { convertToPng } from "../../../utils/image-convert.ts";
+import { ensurePngTranscoder } from "../../../utils/image-convert.ts";
 import { theme } from "../theme/theme.ts";
 import { keyHint, keyText } from "./keybinding-hints.ts";
 
@@ -31,6 +32,7 @@ export interface ToolExecutionOptions {
 	imageWidthCells?: number;
 	/** Display-only frame for Pi-rendered built-in tool content. */
 	rendererProfile?: ToolRendererProfile;
+	outputPad?: number;
 }
 
 export class ToolExecutionComponent extends Container {
@@ -44,6 +46,8 @@ export class ToolExecutionComponent extends Container {
 	private resultRendererComponent?: Component;
 	private rendererState: any = {};
 	private imageComponents: Image[] = [];
+	/** Inputs of imageComponents, so updateDisplay can reuse images and keep their converted PNG data. */
+	private imageSources: Array<{ data: string; mimeType: string; widthCells: number }> = [];
 	private imageSpacers: Spacer[] = [];
 	private toolName: string;
 	private toolCallId: string;
@@ -51,6 +55,7 @@ export class ToolExecutionComponent extends Container {
 	private expanded = false;
 	private showImages: boolean;
 	private imageWidthCells: number;
+	private outputPad: number;
 	private isPartial = true;
 	private toolDefinition?: ToolRenderers;
 	private rendererProfile?: ToolRendererProfile;
@@ -62,11 +67,8 @@ export class ToolExecutionComponent extends Container {
 		content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
 		isError: boolean;
 		details?: any;
+		durationMs?: number;
 	};
-	private convertedImages: Map<
-		number,
-		{ sourceData: string; sourceMimeType: string; data: string; mimeType: string }
-	> = new Map();
 	private hideComponent = false;
 
 	constructor(
@@ -86,6 +88,7 @@ export class ToolExecutionComponent extends Container {
 		this.rendererProfile = options.rendererProfile;
 		this.showImages = options.showImages ?? true;
 		this.imageWidthCells = options.imageWidthCells ?? 60;
+		this.outputPad = options.outputPad ?? 1;
 		this.ui = ui;
 		this.cwd = cwd;
 
@@ -137,6 +140,8 @@ export class ToolExecutionComponent extends Container {
 			expanded: this.expanded,
 			showImages: this.showImages,
 			isError: this.result?.isError ?? false,
+			durationMs: this.isPartial ? undefined : this.result?.durationMs,
+			outputPad: this.outputPad,
 		};
 	}
 
@@ -173,8 +178,12 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	/** Replace the display definition without changing this row's execution or result state. */
-	setToolDefinition(toolDefinition: ToolRenderers | ToolDefinition<any, any, any> | undefined): void {
+	setToolDefinition(
+		toolDefinition: ToolRenderers | ToolDefinition<any, any, any> | undefined,
+		rendererProfile: ToolRendererProfile | undefined,
+	): void {
 		this.toolDefinition = toolDefinition;
+		this.rendererProfile = rendererProfile;
 		this.updateDisplay();
 		this.ui.requestRender();
 	}
@@ -208,47 +217,23 @@ export class ToolExecutionComponent extends Container {
 			content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
 			details?: any;
 			isError: boolean;
+			/** Execution time of a final result. */
+			durationMs?: number;
 		},
 		isPartial = false,
 	): void {
 		this.result = result;
 		this.isPartial = isPartial;
 		this.updateDisplay();
-		this.maybeConvertImagesForKitty();
-	}
-
-	private maybeConvertImagesForKitty(): void {
-		const caps = getCapabilities();
-		if (caps.images !== "kitty") return;
-		if (!this.result) return;
-
-		const imageBlocks = this.result.content.filter((c) => c.type === "image");
-		for (let i = 0; i < imageBlocks.length; i++) {
-			const img = imageBlocks[i];
-			if (!img.data || !img.mimeType) continue;
-			const sourceData = img.data;
-			const sourceMimeType = img.mimeType;
-			if (sourceMimeType === "image/png") continue;
-			const cached = this.convertedImages.get(i);
-			if (cached?.sourceData === sourceData && cached.sourceMimeType === sourceMimeType) continue;
-
-			const index = i;
-			convertToPng(sourceData, sourceMimeType).then((converted) => {
-				const currentImage = this.result?.content.filter((content) => content.type === "image")[index];
-				if (!converted || currentImage?.data !== sourceData || currentImage.mimeType !== sourceMimeType) return;
-				this.convertedImages.set(index, {
-					sourceData,
-					sourceMimeType,
-					...converted,
-				});
-				this.updateDisplay();
-				this.ui.requestRender();
-			});
-		}
 	}
 
 	setExpanded(expanded: boolean): void {
 		this.expanded = expanded;
+		this.updateDisplay();
+	}
+
+	setOutputPad(outputPad: number): void {
+		this.outputPad = outputPad;
 		this.updateDisplay();
 	}
 
@@ -272,7 +257,7 @@ export class ToolExecutionComponent extends Container {
 			return [];
 		}
 
-		if (this.hasRendererDefinition() && this.getRenderShell() === "self") {
+		if (!this.rendererProfile && this.hasRendererDefinition() && this.getRenderShell() === "self") {
 			const contentLines = this.selfRenderContainer.render(width);
 			this.selfRenderHeight = contentLines.length;
 			if (contentLines.length === 0 && this.imageComponents.length === 0) {
@@ -301,7 +286,9 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	override handleMouse(event: TuiMouseEvent): ReturnType<Container["handleMouse"]> {
-		if (!this.hasRendererDefinition() || this.getRenderShell() !== "self") return super.handleMouse(event);
+		if (this.rendererProfile || !this.hasRendererDefinition() || this.getRenderShell() !== "self") {
+			return super.handleMouse(event);
+		}
 		if (event.y <= 0 || event.y > this.selfRenderHeight) return undefined;
 		return this.selfRenderContainer.handleMouse({
 			...event,
@@ -311,6 +298,9 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private updateDisplay(): void {
+		for (const image of this.imageComponents) this.removeChild(image);
+		for (const spacer of this.imageSpacers) this.removeChild(spacer);
+		const images = this.createImageComponents();
 		const bgFn = this.isPartial
 			? (text: string) => theme.bg("toolPendingBg", text)
 			: this.result?.isError
@@ -325,6 +315,7 @@ export class ToolExecutionComponent extends Container {
 			renderContainer.clear();
 			if (renderContainer instanceof Box) {
 				renderContainer.setBgFn(bgFn);
+				renderContainer.setPaddingX(this.outputPad);
 			}
 
 			let call: Component;
@@ -365,11 +356,11 @@ export class ToolExecutionComponent extends Container {
 			}
 			const resultRegion = result && this.createResultRegion(result);
 
-			if (this.rendererProfile && this.getRenderShell() !== "self") {
+			if (this.rendererProfile) {
 				const frameResult = this.result ? new Container() : undefined;
 				if (frameResult && resultRegion) frameResult.addChild(resultRegion);
 				if (frameResult) {
-					for (const { spacer, image } of this.createImageComponents()) {
+					for (const { spacer, image } of images) {
 						frameResult.addChild(spacer);
 						frameResult.addChild(image);
 					}
@@ -395,25 +386,15 @@ export class ToolExecutionComponent extends Container {
 			}
 		} else {
 			this.contentText.setCustomBgFn(bgFn);
+			this.contentText.setPaddingX(this.outputPad);
 			this.contentText.setText(this.formatToolExecution());
 			this.renderRoot.addChild(this.contentTextRegion);
 			hasContent = true;
 		}
 
-		for (const img of this.imageComponents) {
-			this.removeChild(img);
-		}
-		this.imageComponents = [];
-		for (const spacer of this.imageSpacers) {
-			this.removeChild(spacer);
-		}
-		this.imageSpacers = [];
-
-		if (this.result && (!this.rendererProfile || this.getRenderShell() === "self")) {
-			for (const { spacer, image } of this.createImageComponents()) {
+		if (!this.rendererProfile || !this.hasRendererDefinition()) {
+			for (const { spacer, image } of images) {
 				this.addChild(spacer);
-				this.imageSpacers.push(spacer);
-				this.imageComponents.push(image);
 				this.addChild(image);
 			}
 		}
@@ -424,30 +405,41 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private createImageComponents(): Array<{ spacer: Spacer; image: Image }> {
-		if (!this.result || !this.showImages) return [];
-		const caps = getCapabilities();
-		if (!caps.images) return [];
+		const previousImages = this.imageComponents;
+		const previousSources = this.imageSources;
+		this.imageComponents = [];
+		this.imageSources = [];
+		this.imageSpacers = [];
+		if (!this.result || !this.showImages || !getCapabilities().images) return [];
 
-		const imageBlocks = this.result.content.filter((content) => content.type === "image");
 		const components: Array<{ spacer: Spacer; image: Image }> = [];
-		for (let i = 0; i < imageBlocks.length; i++) {
-			const image = imageBlocks[i];
-			if (!image?.data || !image.mimeType) continue;
-			const cached = this.convertedImages.get(i);
-			const converted =
-				cached?.sourceData === image.data && cached.sourceMimeType === image.mimeType ? cached : undefined;
-			const imageData = converted?.data ?? image.data;
-			const imageMimeType = converted?.mimeType ?? image.mimeType;
-			if (caps.images === "kitty" && imageMimeType !== "image/png") continue;
-			components.push({
-				spacer: new Spacer(1),
-				image: new Image(
-					imageData,
-					imageMimeType,
-					{ fallbackColor: (text: string) => theme.fg("toolOutput", text) },
-					{ maxWidthCells: this.imageWidthCells },
-				),
-			});
+		for (const block of this.result.content) {
+			if (block.type !== "image" || !block.data || !block.mimeType) continue;
+			const source = { data: block.data, mimeType: block.mimeType, widthCells: this.imageWidthCells };
+			const index = this.imageComponents.length;
+			const previous = previousSources[index];
+			const image =
+				previous?.data === source.data &&
+				previous.mimeType === source.mimeType &&
+				previous.widthCells === source.widthCells
+					? previousImages[index]
+					: new Image(
+							source.data,
+							source.mimeType,
+							{ fallbackColor: (text: string) => theme.fg("toolOutput", text) },
+							{ maxWidthCells: source.widthCells },
+						);
+			if (source.mimeType !== "image/png") {
+				ensurePngTranscoder(() => {
+					this.invalidate();
+					this.ui.requestRender();
+				});
+			}
+			const spacer = new Spacer(1);
+			this.imageComponents.push(image);
+			this.imageSources.push(source);
+			this.imageSpacers.push(spacer);
+			components.push({ spacer, image });
 		}
 		return components;
 	}

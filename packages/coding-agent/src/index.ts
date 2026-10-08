@@ -182,6 +182,7 @@ export type {
 	ToolRendererFrameContext,
 	ToolRendererFrameState,
 	ToolRendererProfile,
+	ToolRendererResolver,
 	ToolRenderers,
 	ToolRenderResultOptions,
 	ToolResultEvent,

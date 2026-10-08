@@ -13,10 +13,6 @@ import {
 import { Type } from "typebox";
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 
-const imageConvertMocks = vi.hoisted(() => ({ convertToPng: vi.fn() }));
-
-vi.mock("../src/utils/image-convert.ts", () => imageConvertMocks);
-
 import { getReadmePath } from "../src/config.ts";
 import type { ToolDefinition, ToolRendererProfile, ToolRenderers } from "../src/core/extensions/types.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
@@ -45,6 +41,10 @@ function createBaseToolDefinition(name = "custom_tool"): ToolDefinition {
 	};
 }
 
+// Small 2x2 blue JPEG image
+const TINY_JPEG =
+	"/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAACAAIDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAGCf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AD3VTB3/2Q==";
+
 function createFakeTui(): TUI {
 	return {
 		requestRender: () => {},
@@ -58,44 +58,98 @@ describe("ToolExecutionComponent parity", () => {
 
 	afterEach(() => {
 		resetCapabilitiesCache();
-		imageConvertMocks.convertToPng.mockReset();
 		vi.useRealTimers();
 	});
 
-	// Issue #8577: ignore conversions that finish after the image was replaced.
-	test("keeps the final tool image when a partial image conversion finishes late", async () => {
+	// Issue #10292: the component loads the PNG transcoder itself, so this works in any TUI host.
+	// Issue #8577: a replaced partial image must not resurface.
+	test("converts non-PNG tool images once the transcoder loads", async () => {
 		setCapabilities({ images: "kitty", trueColor: true, hyperlinks: true });
-		let finishConversion!: (result: { data: string; mimeType: string }) => void;
-		const conversion = new Promise<{ data: string; mimeType: string }>((resolve) => {
-			finishConversion = resolve;
-		});
-		imageConvertMocks.convertToPng.mockReturnValue(conversion);
+		const component = new ToolExecutionComponent("tool", "id", {}, {}, undefined, createFakeTui(), process.cwd());
+		component.updateResult(
+			{ content: [{ type: "image", data: "cGFydGlhbA==", mimeType: "image/jpeg" }], isError: false },
+			true,
+		);
+		component.updateResult({ content: [{ type: "image", data: TINY_JPEG, mimeType: "image/jpeg" }], isError: false });
+
+		await vi.waitFor(() => expect(component.render(120).join("\n")).toContain(";iVBORw0KGgo"));
+		const rendered = component.render(120).join("\n");
+		expect(rendered).not.toContain("cGFydGlhbA==");
+
+		// Invalidation reuses the converted Image, so the Kitty image ID stays the same.
+		component.invalidate();
+		expect(component.render(120).join("\n")).toBe(rendered);
+	});
+
+	test("reuses framed JPEG images across invalidation and profile changes without duplication", async () => {
+		setCapabilities({ images: "kitty", trueColor: true, hyperlinks: true });
+		const profile: ToolRendererProfile = {
+			frame: ({ call, result }) => {
+				const frame = new Container();
+				frame.addChild(call);
+				if (result) frame.addChild(result);
+				return frame;
+			},
+		};
 		const component = new ToolExecutionComponent(
-			"custom_tool",
-			"tool-image-race",
-			{},
-			{},
-			undefined,
+			"read",
+			"framed-image",
+			{ path: "image.jpg" },
+			{ rendererProfile: profile },
+			createReadToolDefinition(process.cwd()),
 			createFakeTui(),
 			process.cwd(),
 		);
+		component.updateResult({ content: [{ type: "image", data: TINY_JPEG, mimeType: "image/jpeg" }], isError: false });
+		await vi.waitFor(() => expect(component.render(120).join("\n")).toContain(";iVBORw0KGgo"));
+		const imageEscape = component
+			.render(120)
+			.join("\n")
+			.match(/\x1b_G[^\x1b]*\x1b\\/g);
+		expect(imageEscape).toHaveLength(1);
+		component.invalidate();
+		expect(
+			component
+				.render(120)
+				.join("\n")
+				.match(/\x1b_G[^\x1b]*\x1b\\/g),
+		).toEqual(imageEscape);
+		for (const nextProfile of [
+			undefined,
+			profile,
+			{
+				frame: () => {
+					throw new Error("frame failed");
+				},
+			},
+		]) {
+			component.setToolRendererProfile(nextProfile);
+			expect(
+				component
+					.render(120)
+					.join("\n")
+					.match(/\x1b_G[^\x1b]*\x1b\\/g),
+			).toEqual(imageEscape);
+		}
+		component.updateResult({ content: [{ type: "image", data: "changed", mimeType: "image/png" }], isError: false });
+		expect(component.render(120).join("\n")).not.toContain(";iVBORw0KGgo");
+	});
 
-		component.updateResult(
-			{ content: [{ type: "image", data: "partial-jpeg", mimeType: "image/jpeg" }], isError: false },
-			true,
+	test("changes renderer ownership and profile atomically", () => {
+		const frame = vi.fn(({ call }: { call: Component }) => call);
+		const component = new ToolExecutionComponent(
+			"read",
+			"ownership",
+			{},
+			{ rendererProfile: { frame } },
+			resolveToolRenderers("read", undefined),
+			createFakeTui(),
+			process.cwd(),
 		);
-		component.updateResult({
-			content: [{ type: "image", data: "final-png", mimeType: "image/png" }],
-			isError: false,
-		});
-		expect(component.render(120).join("\n")).toContain("final-png");
-
-		finishConversion({ data: "converted-partial", mimeType: "image/png" });
-		await conversion;
-
-		const rendered = component.render(120).join("\n");
-		expect(rendered).toContain("final-png");
-		expect(rendered).not.toContain("converted-partial");
+		frame.mockClear();
+		component.setToolDefinition({ renderCall: () => new Text("owned", 0, 0) }, undefined);
+		expect(frame).not.toHaveBeenCalled();
+		expect(stripAnsi(component.render(120).join("\n"))).toContain("owned");
 	});
 
 	test("preserves inherited native slots for partial built-in overrides", () => {
@@ -421,6 +475,33 @@ describe("ToolExecutionComponent parity", () => {
 		expect(stripAnsi(component.render(120).join("\n"))).toBe(completed);
 		expect(running).toContain(`Elapsed ${formatted}`);
 		expect(completed).toContain(`Took ${formatted}`);
+	});
+
+	// #10549
+	test("bash renderer shows a result's recorded duration, also for a result restored without a live start", () => {
+		const render = (live: boolean): string => {
+			vi.useFakeTimers();
+			vi.setSystemTime(0);
+			const component = new ToolExecutionComponent(
+				"bash",
+				"tool-bash-recorded",
+				{ command: "sleep 4" },
+				{},
+				createBashToolDefinition(process.cwd(), { exposeSessionEnvironment: false }),
+				createFakeTui(),
+				process.cwd(),
+			);
+			if (live) {
+				component.markExecutionStarted();
+				component.updateResult({ content: [], isError: false }, true);
+				// The wall clock jumps; the recorded duration does not.
+				vi.advanceTimersByTime(3_600_000);
+			}
+			component.updateResult({ content: [], isError: false, durationMs: 4_200 }, false);
+			return stripAnsi(component.render(120).join("\n"));
+		};
+		expect(render(true)).toContain("Took 4.2s");
+		expect(render(false)).toContain("Took 4.2s");
 	});
 
 	test("does not duplicate built-in headers when passed the active built-in definition", () => {

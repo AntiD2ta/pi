@@ -1,7 +1,12 @@
 import { lazyStream } from "./api/lazy.ts";
 import { defaultProviderAuthContext as defaultAuthContext } from "./auth/context.ts";
 import { InMemoryCredentialStore } from "./auth/credential-store.ts";
-import { type AuthResolutionOverrides, ModelsError, resolveProviderAuth } from "./auth/resolve.ts";
+import {
+	type AuthResolutionOverrides,
+	ModelsError,
+	refreshStoredOAuthCredential,
+	resolveProviderAuth,
+} from "./auth/resolve.ts";
 import type {
 	AuthCheck,
 	AuthContext,
@@ -53,6 +58,7 @@ import type { UsageReport, UsageReportFetcher } from "./usage-reports.ts";
 import { operationSignal, raceWithAbortSignal } from "./utils/abort.ts";
 import {
 	assertChatModel,
+	assertClassifierInputSupported,
 	assertClassifierModel,
 	assertImageModel,
 	classifierErrorResult,
@@ -621,15 +627,15 @@ class ModelsImpl implements MutableModels {
 			if (!oauth) return undefined;
 			if (Date.now() < stored.expires) return stored;
 			if (signal.aborted) return undefined;
-			const post = await this.credentials.modify(
+			// A refresh that has started survives cancellation or a superseding model refresh, so a
+			// rotated refresh token is always persisted. A newer refresh then sees the fresh credential.
+			return refreshStoredOAuthCredential(
+				this.credentials,
 				provider.id,
-				async (current) => {
-					if (current?.type !== "oauth" || Date.now() < current.expires) return undefined;
-					return oauth.refresh(current, signal);
-				},
-				{ signal },
+				oauth,
+				(current) => Date.now() >= current.expires,
+				signal,
 			);
-			return post?.type === "oauth" ? post : undefined;
 		}
 
 		const apiKey = provider.auth.apiKey;
@@ -1000,6 +1006,7 @@ class ModelsImpl implements MutableModels {
 	): Promise<ClassifierResult> {
 		try {
 			assertClassifierModel(model);
+			assertClassifierInputSupported(model, context);
 			const provider = this.requireProvider(model);
 			if (!provider.classify) {
 				throw new ModelsError("provider", `Provider ${model.provider} does not support classification`);

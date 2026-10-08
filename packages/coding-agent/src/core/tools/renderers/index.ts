@@ -16,7 +16,7 @@ import { lsRenderers } from "./ls.ts";
 import { readRenderers } from "./read.ts";
 import { writeRenderers } from "./write.ts";
 
-export type { ToolRenderers } from "../../extensions/types.ts";
+export type { ToolRenderers };
 
 export {
 	createShellRenderers,
