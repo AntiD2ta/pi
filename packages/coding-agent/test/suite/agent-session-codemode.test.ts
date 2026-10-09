@@ -742,7 +742,8 @@ describe("codemode models", () => {
 							provider: model.provider,
 							model: model.id,
 							answers: { approved: { type: "bool", probability: text === "good" ? 0.9 : 0.1 } },
-							usage: usage(300, 0.001),
+							// totalTokens differs from input so the test proves which figure is recorded.
+							usage: { ...usage(300, 0.001), output: 20, totalTokens: 320 },
 							stopReason: "stop",
 							timestamp: 0,
 						};
@@ -819,7 +820,7 @@ describe("codemode models", () => {
 		expect(maxActive()).toBe(4);
 		const details = result.details as unknown as CodemodeToolDetails;
 		expect(details.calls.map((call) => [call.name, call.args, call.status, call.cost, call.tokens])).toEqual(
-			Array.from({ length: 6 }, () => ["models.classify", "scorer/judge", "ok", 0.001, 300]),
+			Array.from({ length: 6 }, () => ["models.classify", "scorer/judge", "ok", 0.001, 320]),
 		);
 		// The classifications' usage becomes the codemode result's usage.
 		expect(result.usage?.input).toBe(1800);
@@ -876,9 +877,11 @@ describe("codemode models", () => {
 			{ type: "image", data: TINY_PNG_BASE64, mimeType: "image/png" },
 		]);
 		const details = result.details as unknown as CodemodeToolDetails;
-		expect(details.calls.map((call) => [call.name, call.args, call.status, call.cost, call.error])).toEqual([
-			["models.generateImages", "scorer/painter", "ok", 0.04, undefined],
-			["models.generateImages", "scorer/painter", "error", undefined, "painter exploded"],
+		expect(
+			details.calls.map((call) => [call.name, call.args, call.status, call.cost, call.tokens, call.error]),
+		).toEqual([
+			["models.generateImages", "scorer/painter", "ok", 0.04, 100, undefined],
+			["models.generateImages", "scorer/painter", "error", undefined, undefined, "painter exploded"],
 		]);
 		expect(result.usage?.cost.total).toBeCloseTo(0.04, 10);
 		expect(harness.session.getSessionStats().cost).toBeCloseTo(0.04, 10);
