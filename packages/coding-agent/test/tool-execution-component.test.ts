@@ -152,6 +152,27 @@ describe("ToolExecutionComponent parity", () => {
 		expect(stripAnsi(component.render(120).join("\n"))).toContain("owned");
 	});
 
+	test("does not hand one definition's components to another", () => {
+		const foreign: Component = { render: () => ["foreign"], invalidate() {} };
+		const row = (definition: ToolRenderers | undefined) => {
+			const component = new ToolExecutionComponent(
+				"read",
+				"switch-back",
+				{ path: "notes.ts" },
+				{},
+				definition,
+				createFakeTui(),
+				process.cwd(),
+			);
+			component.updateResult({ content: [{ type: "text", text: "contents" }], isError: false });
+			return component;
+		};
+		const switched = row({ renderCall: () => foreign, renderResult: () => foreign });
+		switched.setToolDefinition(resolveToolRenderers("read", undefined), undefined);
+		// Built-in renderers reuse lastComponent as their own type; a foreign one sends the row to the generic fallback.
+		expect(switched.render(120)).toEqual(row(resolveToolRenderers("read", undefined)).render(120));
+	});
+
 	test("preserves inherited native slots for partial built-in overrides", () => {
 		const profile: ToolRendererProfile = {
 			frame: ({ call }) => call,
