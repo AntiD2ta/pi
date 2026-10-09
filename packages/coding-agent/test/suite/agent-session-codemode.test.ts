@@ -818,8 +818,8 @@ describe("codemode models", () => {
 		// Six classifications with at most four in flight.
 		expect(maxActive()).toBe(4);
 		const details = result.details as unknown as CodemodeToolDetails;
-		expect(details.calls.map((call) => [call.name, call.args, call.status, call.cost])).toEqual(
-			Array.from({ length: 6 }, () => ["models.classify", "scorer/judge", "ok", 0.001]),
+		expect(details.calls.map((call) => [call.name, call.args, call.status, call.cost, call.tokens])).toEqual(
+			Array.from({ length: 6 }, () => ["models.classify", "scorer/judge", "ok", 0.001, 300]),
 		);
 		// The classifications' usage becomes the codemode result's usage.
 		expect(result.usage?.input).toBe(1800);

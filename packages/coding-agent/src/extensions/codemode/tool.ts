@@ -117,6 +117,8 @@ export interface CodemodeNestedCall {
 	error?: string;
 	/** Cost in USD of a `models.*` call that reported usage. */
 	cost?: number;
+	/** Total tokens of a `models.*` call that reported usage. */
+	tokens?: number;
 }
 
 export interface CodemodeToolDetails {

@@ -687,6 +687,7 @@ function createModelGlobals(
 		if (result.errorMessage) record.error = truncateText(result.errorMessage, ERROR_PREVIEW_CHARS);
 		if (result.usage) {
 			record.cost = result.usage.cost.total;
+			record.tokens = result.usage.totalTokens;
 			addUsage(result.usage);
 		}
 		publish();
