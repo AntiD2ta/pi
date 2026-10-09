@@ -17,3 +17,4 @@ Changes carried by this fork until they are available upstream.
 - Support opt-in atomic clipboard image markers in the prompt editor. [#17](https://github.com/AntiD2ta/pi/pull/17)
 - Jump to preceding user prompts from the fullscreen transcript. [#18](https://github.com/AntiD2ta/pi/pull/18)
 - Expose per-call token usage on codemode nested model calls. [#19](https://github.com/AntiD2ta/pi/pull/19)
+- Reset cached tool renderer components when a row switches renderers. [#20](https://github.com/AntiD2ta/pi/pull/20)
