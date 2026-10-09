@@ -184,6 +184,9 @@ export class ToolExecutionComponent extends Container {
 	): void {
 		this.toolDefinition = toolDefinition;
 		this.rendererProfile = rendererProfile;
+		// Renderers reuse lastComponent as their own type, so never pass one definition's components to another.
+		this.callRendererComponent = undefined;
+		this.resultRendererComponent = undefined;
 		this.updateDisplay();
 		this.ui.requestRender();
 	}
