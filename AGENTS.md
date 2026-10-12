@@ -15,7 +15,7 @@ lookup and is refreshed by re-running `plane-bootstrap-project`.
   - Gotchas: the agent token must be a *project member* — the server surfaces a legible error on
     member-scoped writes otherwise · an assignee is **silently dropped** if they are not a project member
     (`update_work_item`'s response warns when this happens)
-  - Conventions: decisions = `adr` work items · issues = work items · glossary = `CONTEXT.md` (repo) ·
+  - Conventions: decisions = `adr` work items · issues = work items · glossary = `GLOSSARY.md` (repo) ·
     wayfinder maps = `wayfinder:map` work items
 
 ### Executing a Plane work item
