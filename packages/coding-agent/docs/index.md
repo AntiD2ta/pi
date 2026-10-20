@@ -54,6 +54,8 @@ Pi's tools and extensions run with the permissions of the Pi process. Project tr
 - [llama.cpp](llama-cpp.md)
 - [MCP](mcp.md)
 - [Message types](message-types.md)
+- [Models configuration](models-configuration.md)
+- [NVIDIA RTX llama.cpp](nvidia-rtx-llama-cpp.md)
 - [Packages](packages.md)
 - [Prompt templates](prompt-templates.md)
 - [Providers](providers.md)
