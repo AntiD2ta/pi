@@ -1,4 +1,3 @@
-import { arch, platform, release } from "node:os";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const googleGenAiMock = vi.hoisted(() => ({
@@ -95,12 +94,13 @@ import { stream as streamGoogleGenerativeAi } from "../src/api/google-generative
 import { stream as streamGoogleVertex } from "../src/api/google-vertex.ts";
 import { getModel, normalizeContext } from "../src/compat.ts";
 import type { Api, Model, StreamOptions } from "../src/types.ts";
+import { formatUserAgent } from "../src/utils/identity.ts";
 
 beforeEach(() => {
 	googleGenAiMock.streamChunks = undefined;
 });
 
-const PI_USER_AGENT = `pi (${platform()} ${release()}; ${arch()})`;
+const PI_USER_AGENT = formatUserAgent();
 
 const context = normalizeContext({
 	messages: [{ role: "user", content: "hello", timestamp: Date.now() }],

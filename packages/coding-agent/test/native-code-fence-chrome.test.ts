@@ -39,7 +39,15 @@ describe("native code fence chrome override", () => {
 		initTheme("dark");
 		const overrides = new OwnerOverrideSlot<MarkdownCodeFenceChrome>();
 		const getChrome = () => overrides.current?.value;
-		const user = new UserMessageComponent("```typescript\nconst user = true;\n```", undefined, 1, [], getChrome);
+		const user = new UserMessageComponent(
+			"```typescript\nconst user = true;\n```",
+			undefined,
+			1,
+			[],
+			undefined,
+			undefined,
+			getChrome,
+		);
 		const assistant = new AssistantMessageComponent(
 			createAssistantMessage([
 				{ type: "thinking", thinking: "```typescript\nconst thought = true;\n```" },
@@ -50,6 +58,8 @@ describe("native code fence chrome override", () => {
 			"Thinking...",
 			1,
 			[],
+			undefined,
+			undefined,
 			getChrome,
 		);
 		const chatContainer = new Container();

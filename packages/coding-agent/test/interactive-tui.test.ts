@@ -113,7 +113,7 @@ describe("createInteractiveTui", () => {
 		}
 	});
 
-	it("keeps the standard prompt marker but not the private user marker in regular terminal output", async () => {
+	it("writes no prompt markers, standard or private, in regular terminal output", async () => {
 		initTheme("dark");
 		const terminal = new RecordingTerminal(60, 8);
 		const ui = createInteractiveTui({
@@ -127,7 +127,8 @@ describe("createInteractiveTui", () => {
 		try {
 			await terminal.waitForRender();
 			const output = terminal.writes.join("");
-			expect(output).toContain("\x1b]133;A\x07");
+			// Upstream drops OSC 133 in regular mode (#11565); the private marker must not leak either.
+			expect(output).not.toContain("\x1b]133;A\x07");
 			expect(output).not.toContain("\x1b]133;P;pi-user\x07");
 		} finally {
 			ui.stop();

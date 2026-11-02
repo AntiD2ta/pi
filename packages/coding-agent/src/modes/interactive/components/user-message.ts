@@ -16,6 +16,8 @@ export class UserMessageComponent extends Container {
 	private markdownTheme: MarkdownTheme;
 	private outputPad: number;
 	private markdownTransformers: readonly MarkdownTransformer[];
+	private messageId?: string;
+	private timestamp?: string;
 	private getCodeFenceChrome: () => MarkdownCodeFenceChrome | undefined;
 
 	constructor(
@@ -23,6 +25,8 @@ export class UserMessageComponent extends Container {
 		markdownTheme: MarkdownTheme = getMarkdownTheme(),
 		outputPad = 1,
 		markdownTransformers: readonly MarkdownTransformer[] = [],
+		messageId?: string,
+		timestamp?: string,
 		getCodeFenceChrome: () => MarkdownCodeFenceChrome | undefined = () => undefined,
 	) {
 		super();
@@ -30,6 +34,8 @@ export class UserMessageComponent extends Container {
 		this.markdownTheme = markdownTheme;
 		this.outputPad = outputPad;
 		this.markdownTransformers = markdownTransformers;
+		this.messageId = messageId;
+		this.timestamp = timestamp;
 		this.getCodeFenceChrome = getCodeFenceChrome;
 		this.rebuild();
 	}
@@ -61,7 +67,13 @@ export class UserMessageComponent extends Container {
 				{
 					preserveOrderedListMarkers: true,
 					preserveBackslashEscapes: true,
-					transform: createMarkdownTransform("user", false, this.markdownTransformers),
+					transform: createMarkdownTransform(
+						"user",
+						() => false,
+						this.markdownTransformers,
+						this.messageId,
+						this.timestamp,
+					),
 					codeFenceChrome: this.getCodeFenceChrome(),
 				},
 			),
