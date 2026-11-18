@@ -887,10 +887,21 @@ export class SettingsManager {
 	/** Resolve each token setting through model override, ordinary setting, then built-in default. */
 	getCompactionSettings(model?: Pick<Model<string>, "provider" | "id">): {
 		enabled: boolean;
+		thresholdFraction?: number;
 		reserveTokens: number;
 		keepRecentTokens: number;
 	} {
+		const thresholdFraction = this.settings.compaction?.thresholdFraction;
+		if (
+			thresholdFraction !== undefined &&
+			!(typeof thresholdFraction === "number" && thresholdFraction > 0 && thresholdFraction < 1)
+		) {
+			throw new Error(
+				"Invalid compaction.thresholdFraction setting. Expected a number between 0 and 1 (exclusive).",
+			);
+		}
 		return {
+			...(thresholdFraction === undefined ? {} : { thresholdFraction }),
 			enabled: this.getCompactionEnabled(),
 			reserveTokens: this.getCompactionReserveTokens(model),
 			keepRecentTokens: this.getCompactionKeepRecentTokens(model),

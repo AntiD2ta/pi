@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { shouldCompact } from "../src/core/compaction/compaction.ts";
+
 import { InMemorySettingsStorage, SettingsManager } from "../src/core/settings-manager.ts";
 
 const model = { provider: "provider", id: "family/model" };
@@ -189,4 +191,20 @@ describe("compaction model overrides", () => {
 		});
 		expect(manager.getCompactionSettings(model)).toEqual({ enabled: true, reserveTokens: 0, keepRecentTokens: 0 });
 	});
+});
+
+it.each([
+	[32_000, 28_800],
+	[1_050_000, 945_000],
+	[101, 91],
+])("uses a relative threshold on a %i-token window", (window, threshold) => {
+	const manager = SettingsManager.inMemory({ compaction: { thresholdFraction: 0.9 } });
+	const settings = manager.getCompactionSettings();
+	expect(shouldCompact(threshold - 1, window, settings)).toBe(false);
+	expect(shouldCompact(threshold, window, settings)).toBe(true);
+});
+
+it.each([0, 1, -0.1, NaN, Infinity])("rejects an invalid threshold fraction (%s)", (thresholdFraction) => {
+	const manager = SettingsManager.inMemory({ compaction: { thresholdFraction } });
+	expect(() => manager.getCompactionSettings()).toThrow("Invalid compaction.thresholdFraction");
 });
