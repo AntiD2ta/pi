@@ -4,7 +4,7 @@ Changes carried by this fork until they are available upstream.
 
 ## Unreleased
 
-- Support an optional context-relative automatic compaction threshold.
+- Support an optional context-relative automatic compaction threshold. [#21](https://github.com/AntiD2ta/pi/pull/21)
 
 - Support additive extension headers. [#1](https://github.com/AntiD2ta/pi/pull/1)
 - Persist prompt history across sessions within a workspace. [#2](https://github.com/AntiD2ta/pi/pull/2)
