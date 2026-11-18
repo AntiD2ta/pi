@@ -32,6 +32,8 @@ Auto-compaction triggers when:
 contextTokens > contextWindow - reserveTokens
 ```
 
+If `compaction.thresholdFraction` is set, automatic compaction instead starts at `ceil(contextWindow * thresholdFraction)`. The fraction must be strictly between 0 and 1. Manual compaction and overflow recovery are unchanged.
+
 By default, `reserveTokens` is 16384 tokens (configurable in `~/.pi/agent/settings.json` or `<project-dir>/.pi/settings.json`). It only decides when compaction starts. Summary requests use the model's output limit, reduced when needed so input and output fit the context window.
 
 During a multi-turn agent run, Pi checks the canonical projected context after tools finish and their results are appended, before starting the next assistant response. If the threshold is crossed, Pi compacts during `prepareNextTurn`, then performs the existing catch-up steering poll before `turn_start`. It skips this between-turn check when the completed tool batch terminates the run and no queued message requires another response. Pi also checks before a new user prompt and performs final-attempt overflow recovery after the low-level run ends.

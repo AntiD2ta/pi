@@ -119,6 +119,7 @@ export interface CompactionResult<T = unknown> {
 
 export interface CompactionSettings {
 	enabled: boolean;
+	thresholdFraction?: number;
 	reserveTokens: number;
 	keepRecentTokens: number;
 }
@@ -266,6 +267,9 @@ export function estimateProjectedContextTokens(
  */
 export function shouldCompact(contextTokens: number, contextWindow: number, settings: CompactionSettings): boolean {
 	if (!settings.enabled) return false;
+	if (settings.thresholdFraction !== undefined) {
+		return contextWindow > 0 && contextTokens >= Math.ceil(contextWindow * settings.thresholdFraction);
+	}
 	return contextTokens > contextWindow - settings.reserveTokens;
 }
 
