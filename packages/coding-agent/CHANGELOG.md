@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added a fullscreen tool call display setting that can collapse consecutive calls into a summary with an activity label, failures, execution time, and estimated result tokens.
+
 ### Fixed
 
 - Fixed pi exiting with an uncaught `AbortError` when a `read` tool call is cancelled while the file is being opened ([#11956](https://github.com/earendil-works/pi/issues/11956))

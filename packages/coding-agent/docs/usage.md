@@ -22,6 +22,8 @@ To include files or images:
 
 Pi shows each tool call and result while it works. Press `Ctrl+O` to expand or collapse tool output. Press `Ctrl+T` to show or hide thinking blocks.
 
+In fullscreen, set **Tool calls** to `collapsed` in `/settings` for one summary per run of consecutive calls. Assistant text and thinking start new groups. Adjacent groups containing the same single tool can share a row across an empty thinking marker, but not across non-empty or redacted thinking. Each summary labels the kinds of tools used without showing their arguments or results. Click a summary to reveal its tool previews, then click a preview to see its full output. Use `Ctrl+O` to expand or collapse all groups and their tool output. Tool time sums execution durations, including overlapping calls. Result tokens estimate the size of the tool results, not billed usage.
+
 The startup header lists the instructions and resources Pi loaded. The editor border indicates the current thinking level. The footer updates as the model uses context and reports usage.
 
 Pi does not ask before every tool call. Review commands and changed files, and use a sandbox for untrusted or unattended work. See [Security](security.md).

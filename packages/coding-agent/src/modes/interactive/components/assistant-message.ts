@@ -1,4 +1,4 @@
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, ToolCall } from "@earendil-works/pi-ai";
 import {
 	type Component,
 	Container,
@@ -12,6 +12,8 @@ import {
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
+import type { ToolExecutionComponent } from "./tool-execution.ts";
+import { ToolExecutionGroup } from "./tool-execution-group.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
 const OSC133_ZONE_END = "\x1b]133;B\x07";
@@ -26,6 +28,17 @@ interface MarkdownSlot {
 	markdown: Markdown;
 	/** Markdown takes its fence chrome at construction, so a chrome change needs a new block. */
 	codeFenceChrome: MarkdownCodeFenceChrome | undefined;
+}
+
+interface ToolGroupTail {
+	group: ToolExecutionGroup;
+	afterEmptyThinking: boolean;
+}
+
+interface AssistantToolLayout {
+	leadingGroup?: ToolGroupTail;
+	createTool: (call: ToolCall) => ToolExecutionComponent;
+	isExpanded: () => boolean;
 }
 
 /**
@@ -46,6 +59,9 @@ export class AssistantMessageComponent extends Container {
 	private timestamp?: string;
 	private thinkingVisibilityOverrides = new Map<number, boolean>();
 	private markdownSlots: MarkdownSlot[] = [];
+	private toolGroups = new Map<string, ToolExecutionGroup>();
+	private trailingToolGroup?: ToolGroupTail;
+	private toolLayout?: AssistantToolLayout;
 
 	constructor(
 		message?: AssistantMessage,
@@ -57,6 +73,7 @@ export class AssistantMessageComponent extends Container {
 		messageId?: string,
 		timestamp?: string,
 		getCodeFenceChrome: () => MarkdownCodeFenceChrome | undefined = () => undefined,
+		toolLayout?: AssistantToolLayout,
 	) {
 		super();
 
@@ -68,6 +85,7 @@ export class AssistantMessageComponent extends Container {
 		this.messageId = messageId;
 		this.timestamp = timestamp;
 		this.getCodeFenceChrome = getCodeFenceChrome;
+		this.toolLayout = toolLayout;
 
 		// Container for text/thinking content
 		this.contentContainer = new Container();
@@ -100,8 +118,17 @@ export class AssistantMessageComponent extends Container {
 		}
 	}
 
+	getTrailingToolGroup(): ToolGroupTail | undefined {
+		return this.trailingToolGroup;
+	}
+
+	getToolGroups(): Iterable<ToolExecutionGroup> {
+		return this.toolGroups.values();
+	}
+
 	setOutputPad(padding: number): void {
 		this.outputPad = padding;
+		for (const group of this.toolGroups.values()) group.setOutputPad(padding);
 		// Markdown takes its padding at construction.
 		this.markdownSlots = [];
 		if (this.lastMessage) {
@@ -151,8 +178,30 @@ export class AssistantMessageComponent extends Container {
 
 		// Render content in order
 		let thinkingRunIndex = 0;
+		const leading = this.toolLayout?.leadingGroup;
+		let toolGroup = leading?.afterEmptyThinking ? undefined : leading?.group;
+		let beforeEmptyThinking = leading?.afterEmptyThinking ? leading.group : undefined;
 		for (let i = 0; i < message.content.length; i++) {
 			const content = message.content[i];
+			if (content.type === "toolCall" && this.toolLayout) {
+				if (!toolGroup) {
+					toolGroup =
+						this.toolGroups.get(content.id) ??
+						new ToolExecutionGroup(this.toolLayout.isExpanded(), this.outputPad);
+					this.toolGroups.set(content.id, toolGroup);
+					// Do not bridge a marker until the final assistant message establishes that it was empty.
+					toolGroup.setPrecedingGroup(isStreaming ? undefined : beforeEmptyThinking);
+					beforeEmptyThinking = undefined;
+					this.contentContainer.addChild(toolGroup);
+				}
+				toolGroup.addCall(content, this.toolLayout.createTool);
+				needsSpacer = true;
+				continue;
+			}
+			if (content.type !== "thinking") {
+				toolGroup = undefined;
+				beforeEmptyThinking = undefined;
+			}
 			if (content.type === "text" && content.text.trim()) {
 				// Assistant text messages with no background - trim the text
 				// Set paddingY=0 to avoid extra spacing before tool executions
@@ -176,11 +225,13 @@ export class AssistantMessageComponent extends Container {
 				);
 			} else if (content.type === "thinking") {
 				const thinkingBlocks: string[] = [];
+				let hasRedactedThinking = false;
 				for (; i < message.content.length; i++) {
 					const thinkingContent = message.content[i];
 					if (thinkingContent.type !== "thinking") {
 						break;
 					}
+					hasRedactedThinking ||= thinkingContent.redacted === true;
 					const thinking = thinkingContent.thinking.trim();
 					if (thinking) {
 						thinkingBlocks.push(thinking);
@@ -188,6 +239,9 @@ export class AssistantMessageComponent extends Container {
 				}
 				i--;
 
+				beforeEmptyThinking =
+					!hasRedactedThinking && thinkingBlocks.length === 0 ? (toolGroup ?? beforeEmptyThinking) : undefined;
+				toolGroup = undefined;
 				if (thinkingBlocks.length === 0) {
 					continue;
 				}
@@ -239,6 +293,10 @@ export class AssistantMessageComponent extends Container {
 				needsSpacer = true;
 			}
 		}
+
+		const tail = toolGroup ?? beforeEmptyThinking;
+		this.trailingToolGroup =
+			message.stopReason === "toolUse" && tail ? { group: tail, afterEmptyThinking: !toolGroup } : undefined;
 
 		// Check if incomplete/failed - show after partial content.
 		// For aborted/error tool calls, tool execution components show the error.
