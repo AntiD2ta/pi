@@ -22,6 +22,7 @@ import {
 	type MermaidRenderingMode,
 	type QuietStartup,
 	type SessionShareDestination,
+	type ToolCallDisplay,
 	type TuiMode,
 	type WarningSettings,
 } from "../../../core/settings-manager.ts";
@@ -81,6 +82,7 @@ export interface SettingsConfig {
 	terminalTheme: TerminalTheme;
 	availableThemes: string[];
 	hideThinkingBlock: boolean;
+	toolCallDisplay: ToolCallDisplay;
 	mermaidRenderingMode: MermaidRenderingMode;
 	showCacheMissNotices: boolean;
 	collapseChangelog: boolean;
@@ -121,6 +123,7 @@ export interface SettingsCallbacks {
 	onThemeChange: (theme: string) => void;
 	onThemePreview?: (theme: string) => void;
 	onHideThinkingBlockChange: (hidden: boolean) => void;
+	onToolCallDisplayChange: (display: ToolCallDisplay) => void;
 	onMermaidRenderingModeChange: (mode: MermaidRenderingMode) => void;
 	onShowCacheMissNoticesChange: (shown: boolean) => void;
 	onCollapseChangelogChange: (collapsed: boolean) => void;
@@ -544,6 +547,13 @@ export class SettingsSelectorComponent extends Container {
 				values: ["true", "false"],
 			},
 			{
+				id: "tool-call-display",
+				label: "Tool calls",
+				description: "Fullscreen only: preview results, collapse consecutive calls into groups, or show detail",
+				currentValue: config.toolCallDisplay,
+				values: ["preview", "collapsed", "expanded"],
+			},
+			{
 				id: "mermaid-rendering",
 				label: "Mermaid diagrams",
 				description: "Render Mermaid code blocks as Unicode diagrams",
@@ -926,6 +936,9 @@ export class SettingsSelectorComponent extends Container {
 						break;
 					case "hide-thinking":
 						callbacks.onHideThinkingBlockChange(newValue === "true");
+						break;
+					case "tool-call-display":
+						callbacks.onToolCallDisplayChange(newValue as ToolCallDisplay);
 						break;
 					case "mermaid-rendering":
 						callbacks.onMermaidRenderingModeChange(newValue as MermaidRenderingMode);

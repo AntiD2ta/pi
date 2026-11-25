@@ -1,3 +1,5 @@
+import type { ToolResultMessage } from "@earendil-works/pi-ai";
+import { estimateTextAndImageContentTokens } from "@earendil-works/pi-ai/utils/estimate";
 import {
 	Box,
 	type Component,
@@ -35,6 +37,12 @@ export interface ToolExecutionOptions {
 	outputPad?: number;
 }
 
+interface ToolExecutionSummary {
+	isError: boolean;
+	durationMs?: number;
+	resultTokens: number;
+}
+
 export class ToolExecutionComponent extends Container {
 	private contentBox: Box;
 	private contentText: Text;
@@ -65,8 +73,9 @@ export class ToolExecutionComponent extends Container {
 	private argsComplete = false;
 	/** `updateArgs()` ran since the last display update; the next render applies it. */
 	private argsPending = false;
+	private summary?: ToolExecutionSummary;
 	private result?: {
-		content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
+		content: ToolResultMessage["content"];
 		isError: boolean;
 		details?: any;
 		durationMs?: number;
@@ -177,6 +186,17 @@ export class ToolExecutionComponent extends Container {
 		});
 	}
 
+	/** Final result stats for the transcript summary; partial outputs are not counted. */
+	getSummary(): ToolExecutionSummary | undefined {
+		if (this.isPartial || !this.result) return undefined;
+		this.summary ??= {
+			isError: this.result.isError,
+			durationMs: this.result.durationMs,
+			resultTokens: estimateTextAndImageContentTokens(this.result.content),
+		};
+		return this.summary;
+	}
+
 	getToolName(): string {
 		return this.toolName;
 	}
@@ -226,7 +246,7 @@ export class ToolExecutionComponent extends Container {
 
 	updateResult(
 		result: {
-			content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
+			content: ToolResultMessage["content"];
 			details?: any;
 			isError: boolean;
 			/** Execution time of a final result. */
@@ -235,6 +255,7 @@ export class ToolExecutionComponent extends Container {
 		isPartial = false,
 	): void {
 		this.result = result;
+		this.summary = undefined;
 		this.isPartial = isPartial;
 		this.updateDisplay();
 	}

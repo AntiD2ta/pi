@@ -2,6 +2,7 @@ import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { Container, Text } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentSessionEvent } from "../../../src/core/agent-session.ts";
+import type { ToolCallDisplay } from "../../../src/core/settings-manager.ts";
 import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";
 import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
 import { createHarness, createTestUiContext } from "../harness.ts";
@@ -53,6 +54,8 @@ type RebindContext = {
 
 type ReloadCommandContext = {
 	hideThinkingBlock: boolean;
+	toolCallDisplay: ToolCallDisplay;
+	toolCallExpansionOverride?: boolean;
 	session: {
 		isStreaming: boolean;
 		isCompacting: boolean;
@@ -64,6 +67,7 @@ type ReloadCommandContext = {
 	settingsManager: {
 		getHttpIdleTimeoutMs: () => number;
 		getHideThinkingBlock: () => boolean;
+		getToolCallDisplay: () => ToolCallDisplay;
 		getOutputPad: () => 0 | 1;
 		getEditorPaddingX: () => number;
 		getAutocompleteMaxVisible: () => number;
@@ -84,6 +88,7 @@ type ReloadCommandContext = {
 	defaultEditor: { setPaddingX: (padding: number) => void; setAutocompleteMaxVisible: (maxVisible: number) => void };
 	themeController: { applyFromSettings: () => Promise<void> };
 	resetExtensionUI: () => void;
+	loadToolCallDisplay: () => void;
 	rebuildChatFromMessages: () => void;
 	setupAutocompleteProvider: () => void;
 	setupExtensionShortcuts: (runner: unknown) => void;
@@ -102,6 +107,7 @@ type InteractiveModePrototype = {
 	): void;
 	rebindCurrentSession(this: RebindContext, options?: { renderBeforeBind?: boolean }): Promise<void>;
 	handleReloadCommand(this: ReloadCommandContext): Promise<void>;
+	loadToolCallDisplay(this: ReloadCommandContext): void;
 };
 
 const interactiveModePrototype = InteractiveMode.prototype as unknown as InteractiveModePrototype;
@@ -123,6 +129,7 @@ function createReloadCommandContext(overrides: ReloadCommandContextOverrides = {
 	const editor = overrides.editor ?? {};
 	return {
 		hideThinkingBlock: overrides.hideThinkingBlock ?? false,
+		toolCallDisplay: overrides.toolCallDisplay ?? "preview",
 		session: {
 			isStreaming: false,
 			isCompacting: false,
@@ -137,6 +144,7 @@ function createReloadCommandContext(overrides: ReloadCommandContextOverrides = {
 		settingsManager: {
 			getHttpIdleTimeoutMs: () => 0,
 			getHideThinkingBlock: () => false,
+			getToolCallDisplay: () => "preview",
 			getOutputPad: () => 1,
 			getEditorPaddingX: () => 1,
 			getAutocompleteMaxVisible: () => 10,
@@ -159,6 +167,7 @@ function createReloadCommandContext(overrides: ReloadCommandContextOverrides = {
 		customHeader: overrides.customHeader,
 		builtInHeader: overrides.builtInHeader,
 		resetExtensionUI: overrides.resetExtensionUI ?? (() => {}),
+		loadToolCallDisplay: interactiveModePrototype.loadToolCallDisplay,
 		rebuildChatFromMessages: overrides.rebuildChatFromMessages ?? (() => {}),
 		setupAutocompleteProvider: overrides.setupAutocompleteProvider ?? (() => {}),
 		setupExtensionShortcuts: overrides.setupExtensionShortcuts ?? (() => {}),
@@ -439,28 +448,29 @@ describe("regression #5943: session_start transient UI", () => {
 		expect(events).toEqual(["session_start", "subscribe-profile"]);
 	});
 
-	it("refreshes hideThinkingBlock before rebuilding chat during reload", async () => {
+	it("refreshes thinking and tool display before rebuilding chat during reload", async () => {
 		initTheme("dark", false);
 		const events: string[] = [];
 		let context: ReloadCommandContext;
 		context = createReloadCommandContext({
-			settingsManager: { getHideThinkingBlock: () => true },
+			settingsManager: { getHideThinkingBlock: () => true, getToolCallDisplay: () => "collapsed" },
 			session: {
 				reload: async (options) => {
 					events.push("reload");
 					await options?.beforeSessionStart?.();
-					events.push(`start:${context.hideThinkingBlock}`);
+					events.push(`start:${context.hideThinkingBlock}:${context.toolCallDisplay}`);
 				},
 			},
 			rebuildChatFromMessages: () => {
-				events.push(`rebuild:${context.hideThinkingBlock}`);
+				events.push(`rebuild:${context.hideThinkingBlock}:${context.toolCallDisplay}`);
 			},
 		});
 
 		await interactiveModePrototype.handleReloadCommand.call(context);
 
 		expect(context.hideThinkingBlock).toBe(true);
-		expect(events).toEqual(["reload", "rebuild:true", "start:true"]);
+		expect(context.toolCallDisplay).toBe("collapsed");
+		expect(events).toEqual(["reload", "rebuild:true:collapsed", "start:true:collapsed"]);
 	});
 
 	it("keeps the reload blocker focused until async reload completes", async () => {

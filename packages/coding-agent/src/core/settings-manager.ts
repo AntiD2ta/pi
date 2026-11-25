@@ -21,6 +21,7 @@ import type {
 	SessionShareDestination,
 	Settings,
 	ThinkingBudgetsSettings,
+	ToolCallDisplay,
 	TransportSetting,
 	TuiMode,
 	WarningSettings,
@@ -47,6 +48,7 @@ export type {
 	Settings,
 	TerminalSettings,
 	ThinkingBudgetsSettings,
+	ToolCallDisplay,
 	TransportSetting,
 	TuiMode,
 	WarningSettings,
@@ -1279,6 +1281,17 @@ export class SettingsManager {
 		}
 		this.globalSettings.terminal.showTerminalProgress = enabled;
 		this.markModified("terminal", "showTerminalProgress");
+		this.save();
+	}
+
+	getToolCallDisplay(): ToolCallDisplay {
+		const display = this.settings.toolCallDisplay;
+		return display === "collapsed" || display === "expanded" ? display : SETTINGS_DEFAULTS.toolCallDisplay;
+	}
+
+	setToolCallDisplay(display: ToolCallDisplay): void {
+		this.globalSettings.toolCallDisplay = display;
+		this.markModified("toolCallDisplay");
 		this.save();
 	}
 

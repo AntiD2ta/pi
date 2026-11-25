@@ -434,6 +434,12 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.tuiMode,
 			}),
 		),
+		toolCallDisplay: Type.Optional(
+			Type.Union([Type.Literal("preview"), Type.Literal("collapsed"), Type.Literal("expanded")], {
+				description: "Initial tool call display in fullscreen. No effect in regular TUI mode.",
+				default: SETTINGS_DEFAULTS.toolCallDisplay,
+			}),
+		),
 		fullscreenExitOutput: Type.Optional(
 			Type.Union([Type.Literal("transcript"), Type.Literal("resume-hint")], {
 				description: "No effect in regular TUI mode.",
@@ -494,6 +500,7 @@ export type SessionShareDestination = NonNullable<SettingsInput["sessionShareDes
 export type PackageSource = Static<typeof PackageSourceSchema>;
 export type FullscreenExitOutput = NonNullable<SettingsInput["fullscreenExitOutput"]>;
 export type TuiMode = NonNullable<SettingsInput["tuiMode"]>;
+export type ToolCallDisplay = NonNullable<SettingsInput["toolCallDisplay"]>;
 export type CacheWarmingMode = NonNullable<SettingsInput["cacheWarming"]>;
 export interface Settings extends Omit<SettingsInput, "queueMode" | "retry" | "skills" | "websockets"> {
 	retry?: RetrySettings;

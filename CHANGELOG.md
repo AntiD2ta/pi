@@ -20,3 +20,4 @@ Changes carried by this fork until they are available upstream.
 - Jump to preceding user prompts from the fullscreen transcript. [#18](https://github.com/AntiD2ta/pi/pull/18)
 - Expose per-call token usage on codemode nested model calls. [#19](https://github.com/AntiD2ta/pi/pull/19)
 - Reset cached tool renderer components when a row switches renderers. [#20](https://github.com/AntiD2ta/pi/pull/20)
+- Add collapsible tool call groups and activity summaries in fullscreen. [#22](https://github.com/AntiD2ta/pi/pull/22)

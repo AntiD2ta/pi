@@ -63,6 +63,7 @@ export const SETTINGS_DEFAULTS = {
 	},
 	cacheWarming: "idle",
 	tuiMode: "fullscreen",
+	toolCallDisplay: "preview",
 	fullscreenExitOutput: "transcript",
 	fullscreenScrollbar: "auto",
 	fullscreenCopyOnSelect: true,

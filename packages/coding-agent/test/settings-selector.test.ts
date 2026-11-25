@@ -64,6 +64,24 @@ describe("SettingsSelectorComponent", () => {
 		expect(onWheelScrollLinesChange.mock.calls.flat()).toEqual([10, "auto", 1]);
 	});
 
+	it("cycles through the fullscreen tool call displays", () => {
+		const onToolCallDisplayChange = vi.fn();
+		const config = {
+			tuiMode: "fullscreen",
+			toolCallDisplay: "preview",
+			defaultModel: "not set",
+			availableDefaultModels: [],
+			availableThinkingLevels: [],
+			modelThinkingLevels: {},
+			availableThemes: [],
+		} as unknown as SettingsConfig;
+		const callbacks = { onToolCallDisplayChange } as unknown as SettingsCallbacks;
+		const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
+		for (const character of "Tool calls") list.handleInput(character);
+		for (let i = 0; i < 3; i++) list.handleInput("\r");
+		expect(onToolCallDisplayChange.mock.calls.flat()).toEqual(["collapsed", "expanded", "preview"]);
+	});
+
 	it("cycles through share destinations", () => {
 		const onSessionShareDestinationChange = vi.fn();
 		const config = {

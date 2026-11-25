@@ -109,6 +109,11 @@
     "compaction": {
       "type": "object",
       "properties": {
+        "thresholdFraction": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
         "enabled": {
           "type": "boolean",
           "default": true
@@ -721,6 +726,24 @@
         }
       ],
       "default": "fullscreen"
+    },
+    "toolCallDisplay": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "preview"
+        },
+        {
+          "type": "string",
+          "const": "collapsed"
+        },
+        {
+          "type": "string",
+          "const": "expanded"
+        }
+      ],
+      "description": "Initial tool call display in fullscreen. No effect in regular TUI mode.",
+      "default": "preview"
     },
     "fullscreenExitOutput": {
       "anyOf": [

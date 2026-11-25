@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, ToolResultMessage, Usage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, ToolCall, ToolResultMessage, Usage } from "@earendil-works/pi-ai";
 import { Container, Text, type TUI } from "@earendil-works/pi-tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import type { AgentSessionEvent } from "../../../src/core/agent-session.ts";
@@ -47,6 +47,9 @@ type RenderSessionContextThis = {
 	sessionManager: { getCwd(): string; getEntries(): SessionEntry[] };
 	session: { retryAttempt: number; modelRegistry: { find(provider: string, modelId: string): undefined } };
 	toolOutputExpanded: boolean;
+	shouldGroupToolCalls(): boolean;
+	getToolCallsExpanded(): boolean;
+	createToolExecution(name: string, id: string, args: ToolCall["arguments"]): ToolExecutionComponent;
 	isInitialized: boolean;
 	updateEditorBorderColor(): void;
 	getRegisteredToolDefinition(toolName: string): { definition: undefined; rendererProfile: undefined };
@@ -79,6 +82,9 @@ function createFakeInteractiveModeThis(): RenderSessionContextThis {
 		sessionManager: { getCwd: () => process.cwd(), getEntries: () => [] },
 		session: { retryAttempt: 0, modelRegistry: { find: () => undefined } },
 		toolOutputExpanded: false,
+		shouldGroupToolCalls: () => false,
+		getToolCallsExpanded: () => false,
+		createToolExecution: Reflect.get(InteractiveMode.prototype, "createToolExecution"),
 		isInitialized: true,
 		updateEditorBorderColor: vi.fn(),
 		getRegisteredToolDefinition: (_toolName: string) => ({ definition: undefined, rendererProfile: undefined }),
